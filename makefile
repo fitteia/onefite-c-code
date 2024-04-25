@@ -1,23 +1,13 @@
-MROOT=./
-RAKU=/usr/bin
-ARCH=x86_64
-OS=LINUX
-PERLVERSION=5.36
-ROOT=$(MROOT)/kernel
+ROOT=/home/lfx/fitteia
+PREFIX=
 
-help:
-	echo "run make ARCH=<x86_64|aarch64> ROOT=<path>  install"
-	echo "Example: make ARCH=aarch64 ROOT=./ install"	
-
-set: 	
-	sed -i'' -e "/constant OFE-PATH\s*=/ s@%OFE-PATH%@$(MROOT)@" $(MROOT)/bin/onefite
-	sed -i'' -e "/constant OFE-PATH\s*=/ s@%OFE-PATH%@$(MROOT)@" $(MROOT)/t/*.rakutest
-	sed -i'' -e "/x86_64/ s@x86_64@$(ARCH)@" $(MROOT)/etc/OFE/default/makefile
-	sed -i'' -e "/PERLVERSION=5.36/ s@5.36@$(PERLVERSION)@" $(MROOT)/etc/OFE/default/makefile
-
-install: set
-	make -C $(ROOT)/C ROOT=$(ROOT) install
-	make -C $(ROOT)/C ROOT=$(ROOT) clean
+install:
+	make ROOT=$(ROOT) -C core/onefit-3.1 install-fitteia
+	make ROOT=$(ROOT) -C core/onefit-3.1/perl install-pcop
+	make ROOT=$(ROOT) -C core/onefit-3.1/doc install
+	make ROOT=$(ROOT) -C local install
 
 clean:
-	make -C $(RROT)/C ROOT=$(ROOT) clean
+	rm -f *~
+	make ROOT=$(ROOT) -C core/onefit-3.1 clean
+	make ROOT=$(ROOT) -C local clean
