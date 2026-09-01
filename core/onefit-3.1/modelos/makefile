@@ -9,7 +9,23 @@ DESTDIR=$(ROOT)/$(PREFIX)
 LIBDIR=$(DESTDIR)/lib
 LIBNUMBER=4.0.4
 FLAGS= -D$(OS) -O3 -fPIC -I$(PERLCORE) -I..
-CC= gcc $(FLAGS)
+# macOS's own /usr/bin/gcc is Apple's clang wearing a gcc name, not GNU
+# GCC - same fix as ../makefile's own (see its comment for the full
+# reasoning): discover a real Homebrew gcc when OS=MacOSX, fall back to
+# plain "gcc" otherwise.
+ifeq ($(OS),MacOSX)
+	GCCPATH := $(shell brew --prefix gcc 2>/dev/null)
+	REAL_GCC :=
+	ifneq ($(GCCPATH),)
+		REAL_GCC := $(shell ls $(GCCPATH)/bin/gcc-[0-9]* 2>/dev/null | sort -t- -k2 -n | tail -1)
+	endif
+	ifeq ($(REAL_GCC),)
+		REAL_GCC := gcc
+	endif
+else
+	REAL_GCC := gcc
+endif
+CC= $(REAL_GCC) $(FLAGS)
 F77= gfortran -O3 -fPIC
 SRCDIR=$(DESTDIR)/src
 

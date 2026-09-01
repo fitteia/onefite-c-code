@@ -1,5 +1,4 @@
 OS=LINUX
-CC=gcc
 F77=gfortran -fPIC -funroll-loops -ffast-math  -std=legacy --fixed-line-length-none -fd-lines-as-comments -fbackslash
 ARCH=x86_64
 ROOT=/home/fitteia
@@ -11,11 +10,31 @@ INTERFACE=UserLib
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
-	GCCPATH := $(shell brew --prefix gcc)
+	# macOS's own /usr/bin/gcc is Apple's clang wearing a gcc name, not
+	# GNU GCC - GCCPATH (a real Homebrew gcc prefix) was already being
+	# discovered here for LIBGFORTRAN's own -L flag, but never actually
+	# used to pick the compiler itself, so CC stayed plain "gcc" (Apple's
+	# clang) even with a real gcc installed alongside it. Homebrew's own
+	# gcc formula installs a versioned binary (gcc-15, gcc-14, ...),
+	# deliberately not plain "gcc", so finding it needs an explicit
+	# search. Same fix as etc/OFE/default/makefile's own (OneFit-Engine/
+	# onefite-native) - this repo builds the libraries THAT makefile
+	# links into every fit, so this side matters at least as much.
+	GCCPATH := $(shell brew --prefix gcc 2>/dev/null)
+	REAL_GCC :=
+	ifneq ($(GCCPATH),)
+		REAL_GCC := $(shell ls $(GCCPATH)/bin/gcc-[0-9]* 2>/dev/null | sort -t- -k2 -n | tail -1)
+	endif
+	ifeq ($(REAL_GCC),)
+		REAL_GCC := gcc
+	endif
 	LIBGFORTRAN = -L$(GCCPATH)/lib/gcc/current
 else
+	REAL_GCC := gcc
 	LIBGFORTRAN=
 endif
+
+CC=$(REAL_GCC)
 
 CCFLAGS= -D$(OS) -O3 -g -fpic -pipe -I$(PERLCORE) -I$(ROOT)$(PREFIX)/include 
 
