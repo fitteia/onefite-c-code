@@ -5142,6 +5142,7 @@ C   FOUND CONTRIBUTIONS TO  T1 TO BE INTEGRATED
       COMMON /TAUE/ TAUE
       COMMON /MOLFRAZ/ AMOLFRA
       COMMON /CONTAT/ ACONT
+      COMPLEX*16 DFAC(9),GFAC(9)
       COMPLEX*16 F0,F1,F2,FMU,FMD
       COMPLEX*16 A,B,CI,D,EI,F,G,H,AI
       COMPLEX*16 FF1,FF2,FF3,FF4,FF5,FF6,FF7,FF8,FF9
@@ -5183,6 +5184,80 @@ C   ************************
       GA=1/TAUC  
       AKL=0.                                            
 
+C     Angular factors do not depend on transition indices K,L.
+C     Compute once per orientation, retaining expression and sum order.
+      DFAC(1)=(A*F0*F0/20. + (B+D)*F0*FMU*(1./20.)*SQRT(3.)
+     & + (CI+G)*F0*FMD*(1./10.)*SQRT(1.5) + EI*FMU*FMU*(3./20.)
+     & + (F+H)*FMU*FMD*(3./10.)/SQRT(2.) + AI*FMD*FMD*(3./10.))
+      DFAC(2)=(AI*F0*F0/20. + (F+H)*F0*F1*(1./20.)*SQRT(3.)
+     & + (CI+G)*F0*F2*(1./10.)*SQRT(1.5) + EI*F1*F1*(3./20.)
+     & + (B+D)*F1*F2*(3./10.)/SQRT(2.) + A*F2*F2*(3./10.))
+      DFAC(3)=(-A*F0*F2*(1./10.)*SQRT(1.5) - B*F2*FMU*(3./10.)
+     & /SQRT(2.)-CI*F2*FMD*(3./10.) - D*F1*F0*(1./20.)*SQRT(3.)
+     & - EI*F1*FMU*(3./20.) - F*F1*FMD*(3./10.)/SQRT(2.)
+     & -G*F0*F0*(1./20.) - H*F0*FMU*(1./20.)*SQRT(3.)
+     & -AI*F0*FMD*(1./10.)*SQRT(1.5))
+      DFAC(4)=(-A*F0*F2*(1./10.)*SQRT(1.5) - D*F2*FMU*(3./10.)
+     & /SQRT(2.)-G*F2*FMD*(3./10.) - B*F1*F0*(1./20.)*SQRT(3.)
+     & - EI*F1*FMU*(3./20.) - H*F1*FMD*(3./10.)/SQRT(2.)
+     & -CI*F0*F0*(1./20.) - F*F0*FMU*(1./20.)*SQRT(3.)
+     & -AI*F0*FMD*(1./10.)*SQRT(1.5))
+      DFAC(5)=(A*F0*F1*(1./10.)*SQRT(1.5) + B*F0*F0*SQRT(1./50.)
+     & + CI*F0*FMU*(1./10.)*SQRT(3./2.)+D*F1*FMU*(3./10.)/SQRT(2.)+
+     & EI*F0*FMU*SQRT(6./100.)+F*FMU*FMU*(3./10.)/SQRT(2.)+
+     & G*F1*FMD*3./10.+H*F0*FMD*SQRT(6./50.)+AI*FMU*FMD*3./10.)
+      DFAC(6)=(A*F0*F1*(1./10.)*SQRT(1.5) + D*F0*F0*SQRT(1./50.)
+     & + G*F0*FMU*(1./10.)*SQRT(3./2.)+B*F1*FMU*(3./10.)/SQRT(2.)+
+     & EI*F0*FMU*SQRT(6./100.)+H*FMU*FMU*(3./10.)/SQRT(2.)+
+     & CI*F1*FMD*3./10.+F*F0*FMD*SQRT(6./50.)+AI*FMU*FMD*3./10.)
+      DFAC(7)=-(AI*F0*FMU*(1./10.)*SQRT(1.5) + H*F0*F0*
+     & SQRT(1./50.) + G*F0*F1*(1./10.)*SQRT(3./2.)+F*F1*FMU*(3./10.)
+     & /SQRT(2.)+ EI*F0*F1*SQRT(6./100.)+D*F1*F1*(3./10.)/SQRT(2.)+
+     & CI*FMU*F2*3./10.+B*F0*F2*SQRT(6./50.)+A*F1*F2*3./10.)
+      DFAC(8)=-(AI*F0*FMU*(1./10.)*SQRT(1.5) + F*F0*F0*
+     & SQRT(1./50.)+ CI*F0*F1*(1./10.)*SQRT(3./2.)+H*F1*FMU*(3./10.)
+     & /SQRT(2.)+ EI*F0*F1*SQRT(6./100.)+B*F1*F1*(3./10.)/SQRT(2.)+
+     & G*FMU*F2*3./10.+D*F0*F2*SQRT(6./50.)+A*F1*F2*3./10.)
+      DFAC(9)=((3./10.)*A*F1*F1+B*F1*F0*SQRT(6./50.)+(3./10.)*
+     & CI*F1*FMU+D*F0*F1*SQRT(6./50)+(2./5.)*EI*F0*F0+F*F0*FMU*
+     & SQRT(6./50.)+ (3./10.)*G*F1*FMU+H*FMU*F0*SQRT(6./50.)+(3./10.)*
+     & AI*FMU*FMU)
+      GFAC(1)=(A*F0*F0/20. + (B+D)*F0*FMU*(1./20.)*SQRT(3.)
+     & + (CI+G)*F0*FMD*(1./10.)*SQRT(1.5) + EI*FMU*FMU*(3./20.)
+     & + (F+H)*FMU*FMD*(3./10.)/SQRT(2.) + AI*FMD*FMD*(3./10.))
+      GFAC(2)=(AI*F0*F0/20. + (F+H)*F0*F1*(1./20.)*SQRT(3.)
+     & + (CI+G)*F0*F2*(1./10.)*SQRT(1.5) + EI*F1*F1*(3./20.)
+     & + (B+D)*F1*F2*(3./10.)/SQRT(2.) + A*F2*F2*(3./10.))
+      GFAC(3)=(-A*F0*F2*(1./10.)*SQRT(1.5) - B*F2*FMU*(3./10.)
+     & /SQRT(2.)-CI*F2*FMD*(3./10.) - D*F1*F0*(1./20.)*SQRT(3.)
+     & - EI*F1*FMU*(3./20.) - F*F1*FMD*(3./10.)/SQRT(2.)
+     & -G*F0*F0*(1./20.) - H*F0*FMU*(1./20.)*SQRT(3.)
+     & -AI*F0*FMD*(1./10.)*SQRT(1.5))
+      GFAC(4)=(-A*F0*F2*(1./10.)*SQRT(1.5) - D*F2*FMU*(3./10.)
+     & /SQRT(2.)-G*F2*FMD*(3./10.) - B*F1*F0*(1./20.)*SQRT(3.)
+     & - EI*F1*FMU*(3./20.) - H*F1*FMD*(3./10.)/SQRT(2.)
+     & -CI*F0*F0*(1./20.) - F*F0*FMU*(1./20.)*SQRT(3.)
+     & -AI*F0*FMD*(1./10.)*SQRT(1.5))
+      GFAC(5)=(A*F0*F1*(1./10.)*SQRT(1.5) + B*F0*F0*SQRT(1./50.)
+     & + CI*F0*FMU*(1./10.)*SQRT(3./2.)+D*F1*FMU*(3./10.)/SQRT(2.)+
+     & EI*F0*FMU*SQRT(6./100.)+F*FMU*FMU*(3./10.)/SQRT(2.)+
+     & G*F1*FMD*3./10.+H*F0*FMD*SQRT(6./50.)+AI*FMU*FMD*3./10.)
+      GFAC(6)=(A*F0*F1*(1./10.)*SQRT(1.5) + D*F0*F0*SQRT(1./50.)
+     & + G*F0*FMU*(1./10.)*SQRT(3./2.)+B*F1*FMU*(3./10.)/SQRT(2.)+
+     & EI*F0*FMU*SQRT(6./100.)+H*FMU*FMU*(3./10.)/SQRT(2.)+
+     & CI*F1*FMD*3./10.+F*F0*FMD*SQRT(6./50.)+AI*FMU*FMD*3./10.)
+      GFAC(7)=-(AI*F0*FMU*(1./10.)*SQRT(1.5)+H*F0*F0*SQRT(1./50.)
+     & + G*F0*F1*(1./10.)*SQRT(3./2.)+F*F1*FMU*(3./10.)/SQRT(2.)+
+     & EI*F0*F1*SQRT(6./100.)+D*F1*F1*(3./10.)/SQRT(2.)+
+     & CI*FMU*F2*3./10.+B*F0*F2*SQRT(6./50.)+A*F1*F2*3./10.)
+      GFAC(8)=-(AI*F0*FMU*(1./10.)*SQRT(1.5)+F*F0*F0*SQRT(1./50.)
+     & + CI*F0*F1*(1./10.)*SQRT(3./2.)+H*F1*FMU*(3./10.)/SQRT(2.)+
+     & EI*F0*F1*SQRT(6./100.)+B*F1*F1*(3./10.)/SQRT(2.)+
+     & G*FMU*F2*3./10.+D*F0*F2*SQRT(6./50.)+A*F1*F2*3./10.)
+      GFAC(9)=((3./10.)*A*F1*F1+B*F1*F0*SQRT(6./50.)+(3./10.)*CI*F1
+     & *FMU+D*F0*F1*SQRT(6./50)+(2./5.)*EI*F0*F0+F*F0*FMU*SQRT(6./50.)+
+     & (3./10.)*G*F1*FMU+H*FMU*F0*SQRT(6./50.)+(3./10.)*AI*FMU*FMU)
+
       DO 10 K=1,NMX 
       DO 10 L=1,NMX 
       IF(K.EQ.L) GO TO 10
@@ -5190,147 +5265,77 @@ C   ************************
 
 c      S+S+  
 
-      FF1=(A*F0*F0/20. + (B+D)*F0*FMU*(1./20.)*SQRT(3.)
-     & + (CI+G)*F0*FMD*(1./10.)*SQRT(1.5) + EI*FMU*FMU*(3./20.)           
-     & + (F+H)*FMU*FMD*(3./10.)/SQRT(2.) + AI*FMD*FMD*(3./10.))
-     & *C(K,L,1)
+      FF1=DFAC(1)*C(K,L,1)
 
 c      S-S- 
 
-      FF2=(AI*F0*F0/20. + (F+H)*F0*F1*(1./20.)*SQRT(3.)
-     & + (CI+G)*F0*F2*(1./10.)*SQRT(1.5) + EI*F1*F1*(3./20.)           
-     & + (B+D)*F1*F2*(3./10.)/SQRT(2.) + A*F2*F2*(3./10.))
-     & *C(K,L,2)
+      FF2=DFAC(2)*C(K,L,2)
 
 c      S-S+
 
-      FF3=(-A*F0*F2*(1./10.)*SQRT(1.5) - B*F2*FMU*(3./10.)
-     & /SQRT(2.)-CI*F2*FMD*(3./10.) - D*F1*F0*(1./20.)*SQRT(3.)  
-     & - EI*F1*FMU*(3./20.) - F*F1*FMD*(3./10.)/SQRT(2.) 
-     & -G*F0*F0*(1./20.) - H*F0*FMU*(1./20.)*SQRT(3.)
-     & -AI*F0*FMD*(1./10.)*SQRT(1.5)) 
-     & *C(K,L,3)
+      FF3=DFAC(3)*C(K,L,3)
 
 c      S+S-
 
-      FF4=(-A*F0*F2*(1./10.)*SQRT(1.5) - D*F2*FMU*(3./10.)
-     & /SQRT(2.)-G*F2*FMD*(3./10.) - B*F1*F0*(1./20.)*SQRT(3.)  
-     & - EI*F1*FMU*(3./20.) - H*F1*FMD*(3./10.)/SQRT(2.) 
-     & -CI*F0*F0*(1./20.) - F*F0*FMU*(1./20.)*SQRT(3.)
-     & -AI*F0*FMD*(1./10.)*SQRT(1.5)) 
-     & *C(K,L,4)
+      FF4=DFAC(4)*C(K,L,4)
 
 c      S+SZ
 
-      FF5=(A*F0*F1*(1./10.)*SQRT(1.5) + B*F0*F0*SQRT(1./50.)
-     & + CI*F0*FMU*(1./10.)*SQRT(3./2.)+D*F1*FMU*(3./10.)/SQRT(2.)+
-     & EI*F0*FMU*SQRT(6./100.)+F*FMU*FMU*(3./10.)/SQRT(2.)+
-     & G*F1*FMD*3./10.+H*F0*FMD*SQRT(6./50.)+AI*FMU*FMD*3./10.)
-     & *C(K,L,5)               
+      FF5=DFAC(5)*C(K,L,5)
 
 c      SZS+
 
-      FF6=(A*F0*F1*(1./10.)*SQRT(1.5) + D*F0*F0*SQRT(1./50.)
-     & + G*F0*FMU*(1./10.)*SQRT(3./2.)+B*F1*FMU*(3./10.)/SQRT(2.)+
-     & EI*F0*FMU*SQRT(6./100.)+H*FMU*FMU*(3./10.)/SQRT(2.)+
-     & CI*F1*FMD*3./10.+F*F0*FMD*SQRT(6./50.)+AI*FMU*FMD*3./10.)
-     & *C(K,L,6)               
+      FF6=DFAC(6)*C(K,L,6)
 
 
 c      S-SZ
 
-      FF7=-(AI*F0*FMU*(1./10.)*SQRT(1.5) + H*F0*F0*
-     & SQRT(1./50.) + G*F0*F1*(1./10.)*SQRT(3./2.)+F*F1*FMU*(3./10.)
-     & /SQRT(2.)+ EI*F0*F1*SQRT(6./100.)+D*F1*F1*(3./10.)/SQRT(2.)+
-     & CI*FMU*F2*3./10.+B*F0*F2*SQRT(6./50.)+A*F1*F2*3./10.)
-     & *C(K,L,7)               
+      FF7=DFAC(7)*C(K,L,7)
 
 c      SZS-
 
-      FF8=-(AI*F0*FMU*(1./10.)*SQRT(1.5) + F*F0*F0*
-     & SQRT(1./50.)+ CI*F0*F1*(1./10.)*SQRT(3./2.)+H*F1*FMU*(3./10.)
-     & /SQRT(2.)+ EI*F0*F1*SQRT(6./100.)+B*F1*F1*(3./10.)/SQRT(2.)+
-     & G*FMU*F2*3./10.+D*F0*F2*SQRT(6./50.)+A*F1*F2*3./10.)
-     & *C(K,L,8)               
+      FF8=DFAC(8)*C(K,L,8)
 
 c     SZSZ
       
-      FF9=((3./10.)*A*F1*F1+B*F1*F0*SQRT(6./50.)+(3./10.)*
-     & CI*F1*FMU+D*F0*F1*SQRT(6./50)+(2./5.)*EI*F0*F0+F*F0*FMU*
-     & SQRT(6./50.)+ (3./10.)*G*F1*FMU+H*FMU*F0*SQRT(6./50.)+(3./10.)*
-     & AI*FMU*FMU)*C(K,L,9)
+      FF9=DFAC(9)*C(K,L,9)
 
 c     S+S+ 
 
-      GG1=(A*F0*F0/20. + (B+D)*F0*FMU*(1./20.)*SQRT(3.)
-     & + (CI+G)*F0*FMD*(1./10.)*SQRT(1.5) + EI*FMU*FMU*(3./20.)           
-     & + (F+H)*FMU*FMD*(3./10.)/SQRT(2.) + AI*FMD*FMD*(3./10.))
-     & *C(L,K,1)
+      GG1=GFAC(1)*C(L,K,1)
 
 c      S-S- 
 
-      GG2=(AI*F0*F0/20. + (F+H)*F0*F1*(1./20.)*SQRT(3.)
-     & + (CI+G)*F0*F2*(1./10.)*SQRT(1.5) + EI*F1*F1*(3./20.)           
-     & + (B+D)*F1*F2*(3./10.)/SQRT(2.) + A*F2*F2*(3./10.))
-     & *C(L,K,2)
+      GG2=GFAC(2)*C(L,K,2)
 
 c      S-S+
 
-      GG3=(-A*F0*F2*(1./10.)*SQRT(1.5) - B*F2*FMU*(3./10.)
-     & /SQRT(2.)-CI*F2*FMD*(3./10.) - D*F1*F0*(1./20.)*SQRT(3.)  
-     & - EI*F1*FMU*(3./20.) - F*F1*FMD*(3./10.)/SQRT(2.) 
-     & -G*F0*F0*(1./20.) - H*F0*FMU*(1./20.)*SQRT(3.)
-     & -AI*F0*FMD*(1./10.)*SQRT(1.5)) 
-     & *C(L,K,3)
+      GG3=GFAC(3)*C(L,K,3)
 
 c      S+S-
 
-      GG4=(-A*F0*F2*(1./10.)*SQRT(1.5) - D*F2*FMU*(3./10.)
-     & /SQRT(2.)-G*F2*FMD*(3./10.) - B*F1*F0*(1./20.)*SQRT(3.)  
-     & - EI*F1*FMU*(3./20.) - H*F1*FMD*(3./10.)/SQRT(2.) 
-     & -CI*F0*F0*(1./20.) - F*F0*FMU*(1./20.)*SQRT(3.)
-     & -AI*F0*FMD*(1./10.)*SQRT(1.5)) 
-     & *C(L,K,4)
+      GG4=GFAC(4)*C(L,K,4)
 
 c      S+SZ
 
-      GG5=(A*F0*F1*(1./10.)*SQRT(1.5) + B*F0*F0*SQRT(1./50.)
-     & + CI*F0*FMU*(1./10.)*SQRT(3./2.)+D*F1*FMU*(3./10.)/SQRT(2.)+
-     & EI*F0*FMU*SQRT(6./100.)+F*FMU*FMU*(3./10.)/SQRT(2.)+
-     & G*F1*FMD*3./10.+H*F0*FMD*SQRT(6./50.)+AI*FMU*FMD*3./10.)
-     & *C(L,K,5)               
+      GG5=GFAC(5)*C(L,K,5)
 
 c      SZS+
 
-      GG6=(A*F0*F1*(1./10.)*SQRT(1.5) + D*F0*F0*SQRT(1./50.)
-     & + G*F0*FMU*(1./10.)*SQRT(3./2.)+B*F1*FMU*(3./10.)/SQRT(2.)+
-     & EI*F0*FMU*SQRT(6./100.)+H*FMU*FMU*(3./10.)/SQRT(2.)+
-     & CI*F1*FMD*3./10.+F*F0*FMD*SQRT(6./50.)+AI*FMU*FMD*3./10.)
-     & *C(L,K,6)               
+      GG6=GFAC(6)*C(L,K,6)
 
 
 c      S-SZ
 
-      GG7=-(AI*F0*FMU*(1./10.)*SQRT(1.5)+H*F0*F0*SQRT(1./50.)
-     & + G*F0*F1*(1./10.)*SQRT(3./2.)+F*F1*FMU*(3./10.)/SQRT(2.)+
-     & EI*F0*F1*SQRT(6./100.)+D*F1*F1*(3./10.)/SQRT(2.)+
-     & CI*FMU*F2*3./10.+B*F0*F2*SQRT(6./50.)+A*F1*F2*3./10.)
-     & *C(L,K,7)               
+      GG7=GFAC(7)*C(L,K,7)
 
 c      SZS-
 
-      GG8=-(AI*F0*FMU*(1./10.)*SQRT(1.5)+F*F0*F0*SQRT(1./50.)
-     & + CI*F0*F1*(1./10.)*SQRT(3./2.)+H*F1*FMU*(3./10.)/SQRT(2.)+
-     & EI*F0*F1*SQRT(6./100.)+B*F1*F1*(3./10.)/SQRT(2.)+
-     & G*FMU*F2*3./10.+D*F0*F2*SQRT(6./50.)+A*F1*F2*3./10.)
-     & *C(L,K,8)               
+      GG8=GFAC(8)*C(L,K,8)
 
 c     SZSZ
       
-      GG9=((3./10.)*A*F1*F1+B*F1*F0*SQRT(6./50.)+(3./10.)*CI*F1
-     & *FMU+D*F0*F1*SQRT(6./50)+(2./5.)*EI*F0*F0+F*F0*FMU*SQRT(6./50.)+
-     & (3./10.)*G*F1*FMU+H*FMU*F0*SQRT(6./50.)+(3./10.)*AI*FMU*FMU)
-     & *C(L,K,9)
+      GG9=GFAC(9)*C(L,K,9)
 
       AIA=(FF1+FF2+FF3+FF4+FF5+FF6+FF7+FF8+FF9)/FLOAT(NMX)
       AJ=(GG1+GG2+GG3+GG4+GG5+GG6+GG7+GG8+GG9)/FLOAT(NMX)

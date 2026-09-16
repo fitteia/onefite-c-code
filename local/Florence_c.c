@@ -1,38 +1,64 @@
 #include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <string.h>
 #include "Florence_f.h"
 #include "Florence_c.h"
 
-/**
-      SI      = 0.5
-      GAMMAI  = 2.675222D+8
-      SPIN    = 2.5
-      IREL    = 1
-      TAUS0M(J,1) = 0.0236
-      TAURM(J,1)  = 2.88D-11
-      TAUVM(J,1)  = 2.86D-12
-      TAUMM(J,1)  = 0.D-6
-      TAUDELTA = 2
-      DPARAM(J) = 0.0
-      EPARAM(J) = 0.0
-      S4M(J)    = 0.0
-      GXM(J)=2.003
-      GYM(J)=2.003
-      GZM(J)=2.003
-      AXM(J) = 0.00
-      AYM(J) = 0.00
-      AZM(J) = 0.0
-      DM(J)   = 0
-      DDM(J)  = 0.0D-5
-      CONCM(J)= 0.001
-      ACQ = 1
-      AMOLFRAM(J)= 12
-      RKM(J)     = 2.767
-      ACONTM(J)  = 0.748
-      THETAM(J)  = 0
-      PHIM(J)    = 0
-**/
+/* A small exact-input cache shares the five outputs across all public wrappers.
+ * Unlike the historical call-count cache, changing ANY input forces evaluation.
+ * Eight slots retain interleaved species/components without unbounded growth.
+ * No approximate matching: optimizers must see every parameter perturbation.
+ * Calls must remain serialized: the Fortran backend uses shared COMMON blocks.
+ * This cache does not make that backend thread-safe.
+ */
+#define FLORENCE_CACHE_SIZE 8
+struct florence_cache_entry {
+    int valid;
+    double frequency;
+    double parameters[28];
+    double result[10];
+};
+static struct florence_cache_entry florence_cache[FLORENCE_CACHE_SIZE];
+static unsigned int florence_next;
+
+static double florence_component(double frequency, const double parameters[28],
+                                 double index)
+{
+    unsigned int i;
+    int component;
+    double input[28], log_frequency, result[10] = {0};
+    struct florence_cache_entry *entry;
+
+    /* Check before log10 or float-to-integer conversion. Keep the historical
+     * finite selector convention: truncate 1..4, otherwise select total. */
+    if (!isfinite(frequency) || frequency <= 0.0 || !isfinite(index))
+        return NAN;
+    for (i = 0; i < 28; ++i)
+        if (!isfinite(parameters[i])) return NAN;
+    component = index >= 1.0 && index < 5.0 ? (int)index : 0;
+    for (i = 0; i < FLORENCE_CACHE_SIZE; ++i) {
+        entry = &florence_cache[i];
+        if (entry->valid && entry->frequency == frequency &&
+            memcmp(entry->parameters, parameters, sizeof(entry->parameters)) == 0)
+            return entry->result[component];
+    }
+    memcpy(input, parameters, sizeof(input));
+    log_frequency = log10(frequency);
+    if (parameters[27] >= 2.0 && parameters[27] < 3.0)
+        modflor_(input, &log_frequency, result);
+    else
+        florencef77_(input, &log_frequency, result);
+    /* Do not retain numerical failures. Only the first five slots are outputs
+     * of the legacy backend, despite its ten-element array declaration. */
+    for (i = 0; i < 5; ++i)
+        if (!isfinite(result[i])) return result[component];
+    entry = &florence_cache[florence_next];
+    entry->frequency = frequency;
+    memcpy(entry->parameters, parameters, sizeof(entry->parameters));
+    memcpy(entry->result, result, sizeof(result));
+    entry->valid = 1;
+    florence_next = (florence_next + 1) % FLORENCE_CACHE_SIZE;
+    return result[component];
+}
 
 double FlorenceN(
 	  double index,
@@ -67,84 +93,9 @@ double FlorenceN(
       double FLAG
 )
 {
-	static double R1[]={0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
-	static int count = 0;	
-
-	double PINP[28];
-      double aux;
-
-	if (count < 1 || count > (int) n-1 ) {
-		FREQ = log10(FREQ);
-
-     	      PINP[0] = SI;
-    	      PINP[1] = GAMMAI;
-   		PINP[2] = SPIN;
-      	PINP[3] = IREL;
-      	PINP[4] = DELTA2; // TAUS0M
-      	PINP[5] = TAURM;
-      	PINP[6] = TAUVM;
-      	PINP[7] = TAUMM;
-      	PINP[8] = 2.0; // TAUDELTA // TO FORCE PINP[4] TO BE DELTA2
-      	PINP[9] = DPARAM;
-      	PINP[10] = EPARAM;
-      	PINP[11] = S4M;
-      	PINP[12] = GXM;
-      	PINP[13] = GYM;
-      	PINP[14] = GZM;
-      	PINP[15] = AXM;
-      	PINP[16] = AYM;
-      	PINP[17] = AZM;
-      	PINP[18] = DM;
-      	PINP[19] = DDM;
-      	PINP[20] = CONCM;
-      	PINP[21] = ACQ;
-      	PINP[22] = AMOLFRAM;
-      	PINP[23] = RKM;
-      	PINP[24] = ACONTM;
-      	PINP[25] = THETAM;
-      	PINP[26] = PHIM;
-      	PINP[27] = FLAG;
-
-		//printf("before: %lg %lg %lg %lg %lg %lg %lg RkM=%lg\n", FREQ,R1[0],R1[1],R1[2],R1[3],R1[4],R1[5],PINP[23]);
-     		// florencef77_(PINP,&FREQ,R1);
-            // modflor_(PINP,&FREQ,R1);
-
-		switch ( (int) FLAG ) {
-			case 2:
-				modflor_(PINP,&FREQ,R1);
-				break;
-			default: /* FLAG == 1 */
-				florencef77_(PINP,&FREQ,R1);
-				break;
-		}
- 
-		//printf("after: %lg %lg %lg %lg %lg %lg %lg RKM=%lg\nreset count: %d\n", FREQ,R1[0],R1[1],R1[2],R1[3],R1[4],R1[5],PINP[23], count);
-	//	printf("reset count: %d\n%lg %lg %lg %lg %lg %lg %lg\n",count, pow(10.0,FREQ),R1[0],R1[1],R1[2],R1[3],R1[4],R1[5]);
- 		count = 0;
-	}
-	switch ( (int) index ) {
-		default:
-			aux = R1[0];
-			break;
-		case 1:
-			count++;
-			aux = R1[1];
-			break;
-		case 2:
-			count++;
-			aux = R1[2];
-			break;
-		case 3:
-			count++;
-			aux = R1[3];
-			break;
-		case 4:
-			count++;
-			aux = R1[4];
-			break;
-	}
-	// printf("index: %d\n", (int) index);
-	return aux;
+    const double parameters[28] = { SI, GAMMAI, SPIN, IREL, DELTA2, TAURM, TAUVM, TAUMM, 2.0, DPARAM, EPARAM, S4M, GXM, GYM, GZM, AXM, AYM, AZM, DM, DDM, CONCM, ACQ, AMOLFRAM, RKM, ACONTM, THETAM, PHIM, FLAG };
+    (void)n; /* Legacy grouping hint; cache identity now uses actual inputs. */
+    return florence_component(FREQ, parameters, index);
 }
 
 double FlorenceN4LS(
@@ -180,84 +131,10 @@ double FlorenceN4LS(
       double FLAG
 )
 {
-	static double R1LS[]={0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
-	static int countLS = 0;	
-
-	double PINP[28];
-    double aux;
-
-	if (countLS < 1 || countLS > (int) n-1 ) {
-		FREQ = log10(FREQ);
-
-     	PINP[0] = SI;
-    	PINP[1] = GAMMAI;
-   		PINP[2] = SPIN;
-      	PINP[3] = IREL;
-      	PINP[4] = DELTA2; // TAUS0M
-      	PINP[5] = TAURM;
-      	PINP[6] = TAUVM;
-      	PINP[7] = TAUMM;
-      	PINP[8] = 2.0; // TAUDELTA // TO FORCE PINP[4] TO BE DELTA2
-      	PINP[9] = DPARAM;
-      	PINP[10] = EPARAM;
-      	PINP[11] = S4M;
-      	PINP[12] = GXM;
-      	PINP[13] = GYM;
-      	PINP[14] = GZM;
-      	PINP[15] = AXM;
-      	PINP[16] = AYM;
-      	PINP[17] = AZM;
-      	PINP[18] = DM;
-      	PINP[19] = DDM;
-      	PINP[20] = CONCM;
-      	PINP[21] = ACQ;
-      	PINP[22] = AMOLFRAM;
-      	PINP[23] = RKM;
-      	PINP[24] = ACONTM;
-      	PINP[25] = THETAM;
-      	PINP[26] = PHIM;
-		PINP[27] = FLAG;
-
-
-		//printf("before: %lg %lg %lg %lg %lg %lg %lg RkM=%lg\n", FREQ,R1[0],R1[1],R1[2],R1[3],R1[4],R1[5],PINP[23]);
-		switch ( (int) FLAG ) {
-			case 2:
-				modflor_(PINP,&FREQ,R1LS);
-				break;
-			default: /* FLAG == 1 */
-				florencef77_(PINP,&FREQ,R1LS);
-				break;
-		}
- 
-		//printf("after: %lg %lg %lg %lg %lg %lg %lg RKM=%lg\nreset count: %d\n", FREQ,R1[0],R1[1],R1[2],R1[3],R1[4],R1[5],PINP[23], count);
-	//	printf("reset count: %d\n%lg %lg %lg %lg %lg %lg %lg\n",count, pow(10.0,FREQ),R1[0],R1[1],R1[2],R1[3],R1[4],R1[5]);
- 		countLS = 0;
-	}
-	switch ( (int) index ) {
-		default:
-			aux = R1LS[0];
-			break;
-		case 1:
-			countLS++;
-			aux = R1LS[1];
-			break;
-		case 2:
-			countLS++;
-			aux = R1LS[2];
-			break;
-		case 3:
-			countLS++;
-			aux = R1LS[3];
-			break;
-		case 4:
-			countLS++;
-			aux = R1LS[4];
-			break;
-	}
-	// printf("index: %d\n", (int) index);
-	return aux;
+    const double parameters[28] = { SI, GAMMAI, SPIN, IREL, DELTA2, TAURM, TAUVM, TAUMM, 2.0, DPARAM, EPARAM, S4M, GXM, GYM, GZM, AXM, AYM, AZM, DM, DDM, CONCM, ACQ, AMOLFRAM, RKM, ACONTM, THETAM, PHIM, FLAG };
+    (void)n; /* Legacy grouping hint; cache identity now uses actual inputs. */
+    return florence_component(FREQ, parameters, index);
 }
-
 
 double Florence(
       double FREQ,
@@ -290,54 +167,8 @@ double Florence(
       double FLAG
 )
 {
-	double PINP[28],R1[10];
-    double aux;
-
-	FREQ = log10(FREQ);
-
-      PINP[0] = SI;
-      PINP[1] = GAMMAI;
-      PINP[2] = SPIN;
-      PINP[3] = IREL;
-      PINP[4] = DELTA2; // TAUS0M
-      PINP[5] = TAURM;
-      PINP[6] = TAUVM;
-      PINP[7] = TAUMM;
-      PINP[8] = 2.0; // TAUDELTA // TO FORCE PINP[4] TO BE DELTA2
-      PINP[9] = DPARAM;
-      PINP[10] = EPARAM;
-      PINP[11] = S4M;
-      PINP[12] = GXM;
-      PINP[13] = GYM;
-      PINP[14] = GZM;
-      PINP[15] = AXM;
-      PINP[16] = AYM;
-      PINP[17] = AZM;
-      PINP[18] = DM;
-      PINP[19] = DDM;
-      PINP[20] = CONCM;
-      PINP[21] = ACQ;
-      PINP[22] = AMOLFRAM;
-      PINP[23] = RKM;
-      PINP[24] = ACONTM;
-      PINP[25] = THETAM;
-      PINP[26] = PHIM;
-      PINP[27] = FLAG;
-
-
-	// modflor_(PINP,&FREQ,R1);
-
-
-		switch ( (int) FLAG ) {
-			case 2:
-				modflor_(PINP,&FREQ,R1);
-				break;
-			default: /* FLAG == 1 */
-				florencef77_(PINP,&FREQ,R1);
-				break;
-		}
-	// printf("%lg %lg\n",FREQ,R1[0]);
- 	return R1[0];	
+    const double parameters[28] = { SI, GAMMAI, SPIN, IREL, DELTA2, TAURM, TAUVM, TAUMM, 2.0, DPARAM, EPARAM, S4M, GXM, GYM, GZM, AXM, AYM, AZM, DM, DDM, CONCM, ACQ, AMOLFRAM, RKM, ACONTM, THETAM, PHIM, FLAG };
+    return florence_component(FREQ, parameters, 0.0);
 }
 
 double Florence4(
@@ -372,85 +203,6 @@ double Florence4(
       double FLAG
 )
 {
-	static double R1[]={0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
-	static int count = 0;	
-
-	double PINP[28];
-    double aux;
-	int i;
-
-	if (count < 1 || count > 3 ) {
-		FREQ = log10(FREQ);
-
-     	PINP[0] = SI;
-    	PINP[1] = GAMMAI;
-   		PINP[2] = SPIN;
-      	PINP[3] = IREL;
-      	PINP[4] = DELTA2; // TAUS0M
-      	PINP[5] = TAURM;
-      	PINP[6] = TAUVM;
-      	PINP[7] = TAUMM;
-      	PINP[8] = 2.0; // TAUDELTA // TO FORCE PINP[4] TO BE DELTA2
-      	PINP[9] = DPARAM;
-      	PINP[10] = EPARAM;
-      	PINP[11] = S4M;
-      	PINP[12] = GXM;
-      	PINP[13] = GYM;
-      	PINP[14] = GZM;
-      	PINP[15] = AXM;
-      	PINP[16] = AYM;
-      	PINP[17] = AZM;
-      	PINP[18] = DM;
-      	PINP[19] = DDM;
-      	PINP[20] = CONCM;
-      	PINP[21] = ACQ;
-      	PINP[22] = AMOLFRAM;
-      	PINP[23] = RKM;
-      	PINP[24] = ACONTM;
-      	PINP[25] = THETAM;
-      	PINP[26] = PHIM;
-		PINP[27] = FLAG;
-
-
-
-		// modflor_(PINP,&FREQ,R1);
-
-		//printf("before: %lg %lg %lg %lg %lg %lg %lg RkM=%lg\n", FREQ,R1[0],R1[1],R1[2],R1[3],R1[4],R1[5],PINP[23]);
-		switch ( (int) FLAG ) {
-			case 2:
-				modflor_(PINP,&FREQ,R1);
-				break;
-			default: /* FLAG == 1 */
-				florencef77_(PINP,&FREQ,R1);
-				break;
-		}
-		// for (i=0; i<10; i++) { R1[i] = aR1[i]; }	
- 		count = 0;
-		//printf("after: %lg %lg %lg %lg %lg %lg %lg RKM=%lg\nreset count: %d\n", FREQ,R1[0],R1[1],R1[2],R1[3],R1[4],R1[5],PINP[23], count);
-//	printf("index: %d\n", (int) index);
-	}
-	switch ( (int) index ) {
-		default:
-			aux = R1[0];
-			break;
-		case 1:
-			count++;
-			aux = R1[1];
-			break;
-		case 2:
-			count++;
-			aux = R1[2];
-			break;
-		case 3:
-			count++;
-			aux = R1[3];
-			break;
-		case 4:
-			count++;
-			aux = R1[4];
-			break;
-	}
-	//printf("index: %d %lg\n", (int) index, aux);
-	return aux;
+    const double parameters[28] = { SI, GAMMAI, SPIN, IREL, DELTA2, TAURM, TAUVM, TAUMM, 2.0, DPARAM, EPARAM, S4M, GXM, GYM, GZM, AXM, AYM, AZM, DM, DDM, CONCM, ACQ, AMOLFRAM, RKM, ACONTM, THETAM, PHIM, FLAG };
+    return florence_component(FREQ, parameters, index);
 }
-
