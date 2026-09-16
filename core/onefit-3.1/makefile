@@ -1,7 +1,28 @@
 # $Id: makefile,v 1.12 1999/10/28 15:45:13 pedros Exp $
 ARCH=x86_64
 OS=LINUX
-CC=gcc
+# macOS's own /usr/bin/gcc is Apple's clang wearing a gcc name, not GNU
+# GCC - discover a real, Homebrew-installed gcc (a versioned binary,
+# e.g. gcc-15 - deliberately not plain "gcc", so it doesn't clobber the
+# system one) when OS=MacOSX (the value the caller passes on Darwin -
+# see onefite-native's doctor.go/real INSTALL's own os_ detection),
+# falling back to plain "gcc" otherwise (Linux's own gcc is already
+# real GCC). Same fix as etc/OFE/default/makefile's own (OneFit-Engine/
+# onefite-native) - this makefile builds the library THAT one links
+# into every fit, so this side matters at least as much.
+ifeq ($(OS),MacOSX)
+	GCCPATH := $(shell brew --prefix gcc 2>/dev/null)
+	REAL_GCC :=
+	ifneq ($(GCCPATH),)
+		REAL_GCC := $(shell ls $(GCCPATH)/bin/gcc-[0-9]* 2>/dev/null | sort -t- -k2 -n | tail -1)
+	endif
+	ifeq ($(REAL_GCC),)
+		REAL_GCC := gcc
+	endif
+else
+	REAL_GCC := gcc
+endif
+CC=$(REAL_GCC)
 ROOT=/home/lfx/fitteia
 PREFIX=
 DESTDIR=$(ROOT)$(PREFIX)
