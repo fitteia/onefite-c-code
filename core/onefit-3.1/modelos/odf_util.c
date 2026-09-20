@@ -302,28 +302,56 @@ void gauleg(double x1, double x2, double x[], double w[], int n)
 /*****************************************************************************/
 /*                                                                           */
 /*****************************************************************************/
+/* Kept in sync with core/onefit-3.1/integra.c's own sqgausn (see that
+   file's own comment for the full rationale/derivation) - this file
+   duplicates gauleg/sqgausn/etc. as its own copy rather than depending on
+   integra.c's, and in the real per-fit link order (-luserlib -lonefit
+   -lonefit-modelos - see etc/OFE/default/makefile) integra.c's copy is
+   actually the one that wins for external callers (local/ECDpoli.c,
+   SDFreed.c, MNPDanuta.c, OPF.c all resolve to it, not this one) - but
+   fixing only one copy and leaving this one stale would be exactly the
+   kind of trap that bites the next person who edits this file expecting
+   it to take effect. */
 double sqgausn(Function *X, int p, int n)
 {
-	int j;
-	double a,b,s,*x,*w;
+	static struct { int n; int used; double x[257], w[257]; } cache[8];
+	static int next_slot = 0;
+	int j, slot = -1;
+	double a, b, midpoint, half_width, s;
+
+	if (n < 1 || n > 256) {
+		double *x2 = dvector(0,n), *w2 = dvector(0,n);
+		a = r_plow(X,p);
+		b = r_phigh(X,p);
+		gauleg(a,b,x2,w2,n);
+		s = 0;
+		for (j = 1; j <= n; j++) { w_pval(X,p,x2[j]); s += w2[j]*FUNC(X); }
+		free_dvector(x2,0,n);
+		free_dvector(w2,0,n);
+		return s;
+	}
+
+	for (j = 0; j < 8; j++) {
+		if (cache[j].used && cache[j].n == n) { slot = j; break; }
+	}
+	if (slot < 0) {
+		slot = next_slot;
+		next_slot = (next_slot + 1) % 8;
+		gauleg(-1.0, 1.0, cache[slot].x, cache[slot].w, n);
+		cache[slot].n = n;
+		cache[slot].used = 1;
+	}
 
 	a = r_plow(X,p);
 	b = r_phigh(X,p);
-
-	x = dvector(0,n);
-	w = dvector(0,n);
-
-	gauleg(a,b,x,w,n);
-
-	s=0;
-	for (j=1;j<=n;j++) {
-		w_pval(X,p,x[j]);
-		s += w[j]*FUNC(X);
+	midpoint = 0.5 * (a + b);
+	half_width = 0.5 * (b - a);
+	s = 0;
+	for (j = 1; j <= n; j++) {
+		w_pval(X, p, midpoint + half_width * cache[slot].x[j]);
+		s += cache[slot].w[j] * FUNC(X);
 	}
-	free_dvector(x,0,n);
-	free_dvector(w,0,n);
-
-	return s;
+	return half_width * s;
 }
 
 /*****************************************************************************/
