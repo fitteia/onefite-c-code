@@ -48,7 +48,9 @@ int main(int argc, char **argv,char **env)
 #endif
 
   fprintf(stderr,"OneFit accesses non-linear fitting parameters through their names\nindependently of their order in the parameter file.\nYou may find it usefull to use X1fit (OneFit GUI) to manage OneFit\n\n");
-  fprintf(stderr,"Copyright (C) 1990-2025, Pedro Jos%c Oliveira Sebasti%co\n\n",233,227);
+  /* Emit UTF-8 explicitly; the old %c(233,227) bytes were Latin-1 and
+     appeared as '?' in UTF-8 terminals. */
+  fprintf(stderr,"Copyright (C) 1990-2026, Pedro Jos\303\251 Oliveira Sebasti\303\243o\n\n");
 /*  fprintf(stderr,"\n(The idea used in the first version of this program");
   fprintf(stderr,"\n was the result of a suggestion of Carlos Cruz");
   fprintf(stderr,"\n Thank you Carlos for that challenge)\n\n");
@@ -863,5 +865,4 @@ void initialize()
 
     CLOSE_INITIALIZE;
 }
-
 

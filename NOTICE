@@ -1,0 +1,53 @@
+onefite-c-code
+
+This repository is an extraction of the C and Fortran engine sources from
+OneFit-Engine. Original OneFit code is covered by the Artistic License 2.0;
+see LICENSE and the upstream project:
+https://github.com/fitteia/OneFit-Engine
+
+Third-party and separately licensed material
+
+1. NAG-derived Fortran routines
+
+local/Florence_f.f contains routines carrying NAG copyright notices and
+historical NAG Library release markers, including F01BCF, F01BCY, F01BCZ,
+F02AXF, F02AYF, P01ABF, P01ABZ, X02AJF, X02AKF, X04AAF, and X04BAF.
+Those notices are preserved in the source. This repository does not assert
+that those routines are relicensed under the Artistic License 2.0. Their
+redistribution rights and the applicable NAG terms must be verified before
+redistributing binaries or source that contains them.
+
+2. Minuit
+
+The fitting engine links separately with the Minuit static library. Minuit is
+maintained in the sibling repository:
+https://github.com/fitteia/minuit
+That repository is GPLv2-licensed; see its COPYING file. Minuit is not
+relicensed by this repository. Any distribution that links or bundles Minuit
+must comply with GPLv2 and provide the corresponding source and notices.
+
+3. epstopdf
+
+core/onefit-3.1/perl/epstopdf is vendored from CTAN and carries its own
+revised 3-clause BSD-style license and copyright notices in the file header.
+Those terms remain applicable to that file.
+
+4. Generated and local model code
+
+Files under local/ may contain user-contributed model code and references to
+external literature or algorithms. Their authorship and licensing should be
+checked before redistributing a build that includes those files.
+
+5. GNU getopt
+
+core/onefit-3.1/getopt.c, getopt1.c, and getopt.h-prejessie are GNU getopt
+sources. Their headers state that they are covered by the GNU Library General
+Public License, version 2 or any later version. The corresponding license
+text is provided in third_party/licenses/gnu/COPYING.LIB. These files retain
+their Free Software Foundation copyright notices and are not relicensed under
+Artistic 2.0.
+
+6. pcop
+
+core/onefit-3.1/perl/pcop is original code by Pedro José Oliveira Sebastião
+and is covered by the Artistic License 2.0, like the original OneFit code.

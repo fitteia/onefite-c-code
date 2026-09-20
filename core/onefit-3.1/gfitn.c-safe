@@ -30,7 +30,7 @@ char **env;
   fprintf(stderr,"\nGFITN is free software with ABSOLUTLY NO WARRANTY.\n\n");
   fprintf(stderr,"It provides a way of performing non-linear data fitting of user\n");
   fprintf(stderr,"defined functions compiled with the GFITN kernel program.\n\n");
-  fprintf(stderr,"Copyright (C) 1990-1995, Pedro Jos%c Oliveira Sebasti%co\n\n",233,227);
+  fprintf(stderr,"Copyright (C) 1990-1995, Pedro Jos\303\251 Oliveira Sebasti\303\243o\n\n");
 /*  fprintf(stderr,"\n(The idea used in the first version of this program");
   fprintf(stderr,"\n was the result of a suggestion of Carlos Cruz");
   fprintf(stderr,"\n Thank you Carlos for that challenge)\n\n");
@@ -725,6 +725,5 @@ double perl_func_call(char s[],char *spointer[])
     LEAVE;
     return a;
 }
-
 
 
