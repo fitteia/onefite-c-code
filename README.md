@@ -70,3 +70,22 @@ Only `perl-base` + `ghostscript` are needed to run it, not any part of TeX Live.
 that script for the exact invocation. `onefite-native`'s own packaging story builds against the
 same artifacts this repo produces (`lib/*.a` + `include/*.h`), without needing Raku, Perl, or
 `zef` at any point in that chain.
+
+## License and third-party code
+
+Original OneFit engine code in this extracted repository is covered by the
+Artistic License 2.0; see [LICENSE](LICENSE). The repository also contains or
+builds with separately licensed material. See [NOTICE](NOTICE) before
+redistributing source or binaries.
+
+In particular, `local/Florence_f.f` preserves NAG copyright notices in several
+Fortran routines. Those routines are not assumed to be covered by the
+Artistic License, and their redistribution terms must be verified. Minuit is a
+separate GPLv2 project, and the vendored `epstopdf` script carries its own
+3-clause BSD-style license.
+
+The tree also retains GNU getopt sources under the GNU Library General Public
+License (LGPL-2-or-later). Its license text is in
+`third_party/licenses/gnu/COPYING.LIB`; those files are not relicensed by the
+project license. The `core/onefit-3.1/perl/pcop` helper is original OneFit
+code and is covered by Artistic 2.0.
