@@ -4,9 +4,6 @@
 #include <string.h>
 #include <math.h>
 #include <getopt.h>
-#ifndef MacOSX
-     #include <malloc.h>
-#endif
 #include "gfitn.h"
 #include <stdlib.h>
 #include <sys/wait.h> 

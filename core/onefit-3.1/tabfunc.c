@@ -1,9 +1,6 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <math.h>
-#ifndef MacOSX
-	#include <malloc.h>
-#endif
 #include <stdlib.h>
 #include "globals.h"
 
