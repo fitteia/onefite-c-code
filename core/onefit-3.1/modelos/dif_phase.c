@@ -137,61 +137,7 @@ double dcel(double qqc, double pp, double aa, double bb)
 /******************************************************************************/
 /*									      */
 /******************************************************************************/
-/*
-double	szero(X,n,eps)
-int	 n;
-double	 eps;
-Function *X;
-{
-	int	a,b,c,p;
-	double 	x,*z,*f,*xx,x1,x2;
-	double	g,_T_,N;
-	double	*dvector(),bis(),hyp();
-	void	free_dvector(),nrerror();
-
-	z = dvector(-1,1);
-	f = dvector(-1,1);
-
-	xx = &(*X).par[n].val;
-	x1 = (*X).par[n].low_v;
-	x2 = (*X).par[n].high_v;
-
-	z[-1] = x1; *xx = x1; f[-1]=FUNC(X);
-	z[1]  = x2; *xx = x2; f[1] =FUNC(X);
-
-	if(f[-1]*f[1] > 0.0) nrerror("E necessario ter-se F(x1)*F(x2)<=0");
-	a = p = 0.0; b = 1; goto bis;
-
-hyp:
-	_T_ = N = 0.0;
-	for(c= -1;c<=1;c++) {
-		x = z[c];
-		if(f[c]==0.0) goto out;
-		if(c==0) g = (z[1]-z[-1])/f[0];
-		else g = c*(z[-c]-z[0])/f[c];
-		_T_ = _T_ + g * (z[c]-z[-a-b]);
-		N += g;
-	}	
-	if(N != 0 && fabs(f[a]) > fabs(f[-a-b]) ) x = z[-a-b]+_T_/N;
-	else goto bis;
-	if( fabs(x-z[-a-b]) > fabs(z[b]-z[-a-b])/2.0 ) 
-bis:
- 	x = (z[b]+z[-a-b])/2.0;
-	z[a]=x; *xx = x; f[a]=FUNC(X);
-	if( SIGN(f[a]) == SIGN(f[b]) ) {
-		b = -a-b;
-		if( p < 6 ) p=0;
-	} else p += 1;
-	a = -a-b;	
-	if( fabs(z[a]-z[b]) > eps && fabs(z[a]-z[-a-b]) > eps )
-		if(p < 6) goto hyp; else goto bis;
-
-out:
-	free_dvector(z,-1,1);
-	free_dvector(f,-1,1);
-	return x;
-}
-*/
+/* The root-finder implementation is provided by integra.c. */
 /******************************************************************************/
 /*									      */
 /******************************************************************************/

@@ -1,104 +1,104 @@
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include "gamma.h"
 #include "fitutil.h"
 
-#define ITMAX 200
-#define EPS 3.0e-7
+#define GAMMA_MAX_ITER 10000
+#define GAMMA_EPS 1.0e-12
 
-double gammq(double a, double x)
-// double a,x;
+/* Regularised incomplete gamma functions.  The public API is retained, but
+   the old Numerical Recipes coefficient approximation is replaced by libm's
+   log-gamma and independently written series/continued-fraction evaluators. */
+double gammln(double xx)
 {
-	double gamser,gammcf,gln;
+    if (!(xx > 0.0) || !isfinite(xx)) return NAN;
+    return lgamma(xx);
+}
 
-	/*	if (x < 0.0 || a <= 0.0) nrerror("Invalid arguments in routine GAMMQ"); */
-	if (x < 0.0 || a <= 0.0) return -1.0;
-	if (x < (a+1.0)) {
-		gser(&gamser,a,x,&gln);
-		return 1.0-gamser;
-	} else {
-		gcf(&gammcf,a,x,&gln);
-		return gammcf;
-	}
+void gser(double *gamser, double a, double x, double *gln)
+{
+    double term, sum, ap, scale;
+    int n;
+
+    if (!(a > 0.0) || x < 0.0 || !isfinite(a) || !isfinite(x))
+        nrerror("Invalid arguments in lower incomplete gamma");
+    *gln = gammln(a);
+    if (x == 0.0) {
+        *gamser = 0.0;
+        return;
+    }
+    ap = a;
+    term = sum = 1.0 / a;
+    for (n = 1; n <= GAMMA_MAX_ITER; ++n) {
+        ap += 1.0;
+        term *= x / ap;
+        sum += term;
+        if (fabs(term) <= fabs(sum) * GAMMA_EPS) {
+            scale = exp(-x + a * log(x) - *gln);
+            *gamser = sum * scale;
+            return;
+        }
+    }
+    nrerror("Lower incomplete gamma series did not converge");
 }
 
 void gcf(double *gammcf, double a, double x, double *gln)
-// double a,x,*gammcf,*gln;
 {
-	int n;
-	double gold=0.0,g,fac=1.0,b1=1.0;
-	double b0=0.0,anf,ana,an,a1,a0=1.0;
+    double b, c, d, h, an, delta, scale;
+    int n;
 
-	*gln=gammln(a);
-	a1=x;
-	for (n=1;n<=ITMAX;n++) {
-		an=(float) n;
-		ana=an-a;
-		a0=(a1+a0*ana)*fac;
-		b0=(b1+b0*ana)*fac;
-		anf=an*fac;
-		a1=x*a0+anf*a1;
-		b1=x*b0+anf*b1;
-		if (a1) {
-			fac=1.0/a1;
-			g=b1*fac;
-			if (fabs((g-gold)/g) < EPS) {
-				*gammcf=exp(-x+a*log(x)-(*gln))*g;
-				return;
-			}
-			gold=g;
-		}
-	}
-	nrerror("a too large, ITMAX too small in routine GCF");
+    if (!(a > 0.0) || x < 0.0 || !isfinite(a) || !isfinite(x))
+        nrerror("Invalid arguments in upper incomplete gamma");
+    *gln = gammln(a);
+    if (x == 0.0) {
+        *gammcf = 1.0;
+        return;
+    }
+    b = x + 1.0 - a;
+    c = 1.0 / DBL_MIN;
+    d = fabs(b) < DBL_MIN ? 1.0 / DBL_MIN : 1.0 / b;
+    h = d;
+    for (n = 1; n <= GAMMA_MAX_ITER; ++n) {
+        an = -(double)n * ((double)n - a);
+        b += 2.0;
+        d = an * d + b;
+        if (fabs(d) < DBL_MIN) d = copysign(DBL_MIN, d);
+        c = b + an / c;
+        if (fabs(c) < DBL_MIN) c = copysign(DBL_MIN, c);
+        d = 1.0 / d;
+        delta = d * c;
+        h *= delta;
+        if (fabs(delta - 1.0) <= GAMMA_EPS) {
+            scale = exp(-x + a * log(x) - *gln);
+            *gammcf = scale * h;
+            return;
+        }
+    }
+    nrerror("Upper incomplete gamma continued fraction did not converge");
 }
 
-
-void gser(double *gamser, double a, double x, double *gln)
-// double a,x,*gamser,*gln;
+double gammq(double a, double x)
 {
-	int n;
-	double sum,del,ap;
+    double lower, upper, gln;
 
-	*gln=gammln(a);
-	if (x <= 0.0) {
-		if (x < 0.0) nrerror("x less than 0 in routine GSER");
-		*gamser=0.0;
-		return;
-	} else {
-		ap=a;
-		del=sum=1.0/a;
-		for (n=1;n<=ITMAX;n++) {
-			ap += 1.0;
-			del *= x/ap;
-			sum += del;
-			if (fabs(del) < fabs(sum)*EPS) {
-				*gamser=sum*exp(-x+a*log(x)-(*gln));
-				return;
-			}
-		}
-		nrerror("a too large, ITMAX too small in routine GSER");
-		return;
-	}
+    if (x < 0.0 || a <= 0.0 || !isfinite(a) || !isfinite(x)) return -1.0;
+    /* For small integral shapes the regularised upper function is a finite
+       Poisson sum.  This avoids an iterative series/continued fraction in a
+       common fitting case while retaining the same mathematical result. */
+    if (a == floor(a) && a <= 64.0 && x < 700.0) {
+        double term = 1.0, sum = 1.0;
+        int k;
+        for (k = 1; k < (int)a; ++k) {
+            term *= x / (double)k;
+            sum += term;
+        }
+        return exp(-x) * sum;
+    }
+    if (x < a + 1.0) {
+        gser(&lower, a, x, &gln);
+        return 1.0 - lower;
+    }
+    gcf(&upper, a, x, &gln);
+    return upper;
 }
-
-
-double gammln(double xx)
-// double xx;
-{
-	double x,tmp,ser;
-	static double cof[6]={76.18009173,-86.50532033,24.01409822,
-		-1.231739516,0.120858003e-2,-0.536382e-5};
-	int j;
-
-	x=xx-1.0;
-	tmp=x+5.5;
-	tmp -= (x+0.5)*log(tmp);
-	ser=1.0;
-	for (j=0;j<=5;j++) {
-		x += 1.0;
-		ser += cof[j]/x;
-	}
-	return -tmp+log(2.50662827465*ser);
-}
-#undef ITMAX
-#undef EPS

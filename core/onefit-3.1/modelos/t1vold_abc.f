@@ -393,58 +393,79 @@ c
 c
 c
       SUBROUTINE SPLINE(X,Y,N,YP1,YPN,Y2)
-      PARAMETER (NMAX=100)
-      double precision X(N),Y(N),Y2(N),U(NMAX)
-      IF (YP1.GT..99E30) THEN
-        Y2(1)=0.
-        U(1)=0.
+C     Solve the cubic-spline tridiagonal system directly.  The two endpoint
+C     slopes use the historical sentinel convention for natural boundaries.
+      DOUBLE PRECISION X(*),Y(*),Y2(*)
+      REAL YP1,YPN
+      DOUBLE PRECISION DIAG(100),LOWER(100),UPPER(100),RHS(100)
+      DOUBLE PRECISION HLEFT,HRIGHT,SLEFT,SRIGHT,DENOM
+      INTEGER N,I,K
+      IF (N .LT. 2 .OR. N .GT. 100) RETURN
+      HLEFT=X(2)-X(1)
+      IF (YP1 .GT. .99D30) THEN
+        DIAG(1)=1.D0
+        UPPER(1)=0.D0
+        RHS(1)=0.D0
       ELSE
-        Y2(1)=-0.5
-        U(1)=(3./(X(2)-X(1)))*((Y(2)-Y(1))/(X(2)-X(1))-YP1)
+        DIAG(1)=2.D0*HLEFT
+        UPPER(1)=HLEFT
+        RHS(1)=6.D0*((Y(2)-Y(1))/HLEFT-YP1)
       ENDIF
-      DO 11 I=2,N-1
-        SIG=(X(I)-X(I-1))/(X(I+1)-X(I-1))
-        P=SIG*Y2(I-1)+2.
-        Y2(I)=(SIG-1.)/P
-        U(I)=(6.*((Y(I+1)-Y(I))/(X(I+1)-X(I))-(Y(I)-Y(I-1))
-     *      /(X(I)-X(I-1)))/(X(I+1)-X(I-1))-SIG*U(I-1))/P
-11    CONTINUE
-      IF (YPN.GT..99E30) THEN
-        QN=0.
-        UN=0.
+      LOWER(1)=0.D0
+      DO 10 I=2,N-1
+        HLEFT=X(I)-X(I-1)
+        HRIGHT=X(I+1)-X(I)
+        LOWER(I)=HLEFT
+        DIAG(I)=2.D0*(HLEFT+HRIGHT)
+        UPPER(I)=HRIGHT
+        RHS(I)=6.D0*((Y(I+1)-Y(I))/HRIGHT-
+     *       (Y(I)-Y(I-1))/HLEFT)
+10    CONTINUE
+      HLEFT=X(N)-X(N-1)
+      LOWER(N)=HLEFT
+      IF (YPN .GT. .99D30) THEN
+        DIAG(N)=1.D0
+        RHS(N)=0.D0
       ELSE
-        QN=0.5
-        UN=(3./(X(N)-X(N-1)))*(YPN-(Y(N)-Y(N-1))/(X(N)-X(N-1)))
+        DIAG(N)=2.D0*HLEFT
+        RHS(N)=6.D0*(YPN-(Y(N)-Y(N-1))/HLEFT)
       ENDIF
-      Y2(N)=(UN-QN*U(N-1))/(QN*Y2(N-1)+1.)
-      DO 12 K=N-1,1,-1
-        Y2(K)=Y2(K)*Y2(K+1)+U(K)
-12    CONTINUE
+      UPPER(N)=0.D0
+C     Thomas elimination followed by back substitution.
+      DO 20 I=2,N
+        DENOM=DIAG(I)-LOWER(I)*UPPER(I-1)
+        UPPER(I)=UPPER(I)/DENOM
+        RHS(I)=(RHS(I)-LOWER(I)*RHS(I-1))/DENOM
+20    CONTINUE
+      Y2(N)=RHS(N)
+      DO 30 K=N-1,1,-1
+        Y2(K)=RHS(K)-UPPER(K)*Y2(K+1)
+30    CONTINUE
       RETURN
       END
-c
-c
-c
+C
+C
+C
       SUBROUTINE SPLINT(XA,YA,Y2A,N,X,Y)
-      double precision XA(N),YA(N),Y2A(N)
+C     Locate the enclosing interval by bisection and evaluate the cubic.
+      DOUBLE PRECISION XA(*),YA(*),Y2A(*),H,A,B
+      REAL X,Y
+      INTEGER N,KLO,KHI,K
       KLO=1
       KHI=N
-c	print *,X
-1     IF (KHI-KLO.GT.1) THEN
-        K=(KHI+KLO)/2
-        IF(XA(K).GT.X)THEN
+1     IF (KHI-KLO .GT. 1) THEN
+        K=(KLO+KHI)/2
+        IF (XA(K) .GT. X) THEN
           KHI=K
         ELSE
           KLO=K
         ENDIF
-      GOTO 1
+        GOTO 1
       ENDIF
       H=XA(KHI)-XA(KLO)
-c      IF (H.EQ.0.) PAUSE 'Bad XA input.'
       A=(XA(KHI)-X)/H
       B=(X-XA(KLO))/H
       Y=A*YA(KLO)+B*YA(KHI)+
-     *      ((A**3-A)*Y2A(KLO)+(B**3-B)*Y2A(KHI))*(H**2)/6.
-c	print *,H,Y,A,B,YA(KHI),Y2A(KLO),Y2A(KHI),XA(KHI),XA(KLO),X
+     *  ((A*A*A-A)*Y2A(KLO)+(B*B*B-B)*Y2A(KHI))*H*H/6.D0
       RETURN
       END

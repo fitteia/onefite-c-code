@@ -5,161 +5,121 @@
 /******************************************************************************/
 #include	<math.h>
 #include	<stdio.h>
+#include <stdlib.h>
 #include	"struct.h"
 #include "fft-utils.h"
+#include "fitutil.h"
+#ifndef M_PI
+#define M_PI 3.141592653589793238462643383279502884
+#endif
 
 #define		SWAP(a,b)	tempr=(a);(a)=(b);(b)=tempr
 
 /******************************************************************************/
 /*									      */
 /******************************************************************************/
-void	dfour1(double data[], int nn, int isign)
-// double	data[];
-// int	nn,isign;
-/*
-Replaces data by its discrete Fourier transform, if isign is input as 1; or 
-replaces data nn times its inverse discrete Fourier transform, if isign is input
-as -1. data is a complex array of length nn, input as a real array data[1..2*nn]
-nn MUST be an integer power of 2 (this is not checked for!).
-*/
+void dfour1(double data[], int nn, int isign)
+/* In-place iterative radix-2 complex transform.  The historical one-based
+   storage and unnormalised inverse convention are retained. */
 {
-	int	n,mmax,m,j,istep,i;
-	double	wtemp,wr,wpr,wpi,wi,theta,tempr,tempi;
-
-	n=nn << 1;
-	j=1;
-	for(i=1;i<n;i+=2) {
-		if(j>i) {
-			SWAP(data[j],data[i]);
-			SWAP(data[j+1],data[i+1]);
-		}
-		m=n >> 1;
-		while(m >= 2 && j > m) {
-			j -= m;
-			m >>= 1;
-		}
-		j += m;
-	}
-	mmax = 2;
-	while(n > mmax) {
-		istep = 2*mmax;
-		theta = 6.28318530717959/(isign*mmax);
-		wtemp = sin(0.5*theta);
-		wpr = -2.0*wtemp*wtemp;
-		wpi = sin(theta);
-		wr  = 1.0;
-		wi  = 0.0;
-		for(m=1;m<mmax;m+=2) {
-			for(i=m;i<=n;i+=istep) {
-				j = i+mmax;
-				tempr = wr*data[j]-wi*data[j+1];
-				tempi = wr*data[j+1]+wi*data[j];
-				data[j] = data[i]-tempr;
-				data[j+1] = data[i+1]-tempi;
-				data[i] += tempr;
-				data[i+1] += tempi;
-			}
-			wr = (wtemp=wr)*wpr-wi*wpi+wr;
-			wi = wi*wpr+wtemp*wpi+wi;
-		}
-		mmax = istep;
-	}
+    int i, j, length;
+    if (nn < 1 || (nn & (nn - 1)) != 0 || (isign != 1 && isign != -1))
+        nrerror("Invalid size or direction in complex FFT");
+    for (i = 1, j = 0; i < nn; ++i) {
+        int bit = nn >> 1;
+        while (j & bit) { j ^= bit; bit >>= 1; }
+        j ^= bit;
+        if (i < j) {
+            int left = 2 * i + 1, right = 2 * j + 1;
+            double tmp = data[left]; data[left] = data[right]; data[right] = tmp;
+            tmp = data[left + 1]; data[left + 1] = data[right + 1]; data[right + 1] = tmp;
+        }
+    }
+    for (length = 2; length <= nn; length <<= 1) {
+        double angle = (isign > 0 ? 1.0 : -1.0) * 2.0 * M_PI / length;
+        double step_re = cos(angle), step_im = sin(angle);
+        {
+            double wr = 1.0, wi = 0.0;
+            for (j = 0; j < length / 2; ++j) {
+                for (i = 0; i < nn; i += length) {
+                    int u = i + j, v = u + length / 2;
+                double tr = wr * data[2 * v + 1] - wi * data[2 * v + 2];
+                double ti = wr * data[2 * v + 2] + wi * data[2 * v + 1];
+                double ur = data[2 * u + 1], ui = data[2 * u + 2];
+                    data[2 * u + 1] = ur + tr; data[2 * u + 2] = ui + ti;
+                    data[2 * v + 1] = ur - tr; data[2 * v + 2] = ui - ti;
+                }
+                {
+                    double next_wr = wr * step_re - wi * step_im;
+                    wi = wr * step_im + wi * step_re;
+                    wr = next_wr;
+                }
+            }
+        }
+    }
 }
 /******************************************************************************/
 /*									      */
 /******************************************************************************/
 void dtwofft(double data1[], double data2[], double fft1[], double fft2[], int n)
-// double	data1[],data2[],fft1[],fft2[];
-// int	n;
-/*
-Given two real input arrays data1[1..n] and data2[1..n], this routine calls 
-four1 and returns two complex output arrays, fft1, fft2. each of complex length
-n (i.e. real dimensions [1..2n], which contain the discrete fourier transforms 
-of the respective datas. n MUST be an integer power of 2.
-*/
+/* Transform two real vectors independently, preserving the one-based complex
+   output layout of the original helper. */
 {
-	int	nn3,nn2,jj,j;
-	double	rep,rem,aip,aim;
-
-	nn3 = 1+(nn2=2+n+n);
-	for(j=1,jj=2;j<=n;j++,jj += 2) {
-		fft1[jj-1]=data1[j];
-		fft1[jj]=data2[j];
-	}
-	dfour1(fft1,n,1);
-	fft2[1]=fft1[2];
-	fft1[2]=fft2[2]=0.0;
-	for(j=3;j<=n+1;j+=2) {
-		rep = 0.5*(fft1[j]+fft1[nn2-j]);
-		rem = 0.5*(fft1[j]-fft1[nn2-j]);
-		aip = 0.5*(fft1[j+1]+fft1[nn3-j]);
-		aim = 0.5*(fft1[j+1]-fft1[nn3-j]);
-		fft1[j]    = rep;
-		fft1[j+1]  = aim;
-		fft1[nn2-j]= rep;
-		fft1[nn3-j]= -aim;
-		fft2[j]	   = aip;
-		fft2[j+1]  = -rem;
-		fft2[nn2-j]= aip;
-		fft2[nn3-j]= rem;
-	}
+    int j;
+    if (n < 1 || (n & (n - 1)) != 0) nrerror("Invalid size in two-vector FFT");
+    for (j = 1; j <= n; ++j) {
+        fft1[2 * j - 1] = data1[j]; fft1[2 * j] = 0.0;
+        fft2[2 * j - 1] = data2[j]; fft2[2 * j] = 0.0;
+    }
+    dfour1(fft1, n, 1);
+    dfour1(fft2, n, 1);
 }
 /******************************************************************************/
 /*									      */
 /******************************************************************************/
 void drealfft(double data[], int n, int isign)
-// double	data[];
-// int	n,isign;
-/*
-Calculates the Fourier Transform of a set of 2n real-valued data points.
-Replaces this data (which is stored in array data[1..2n] by the positive 
-frequency half of its complex Fourier Transform. The real-valued first and last
-components of the complex transforms are returned as elements data[1] and 
-data[2] respectively. n MUST be a power of 2. This routine also calculates
-the inverse transform of a complex data array if it is the transform of real 
-data.(Result in this case must be multiplied by 1/n.)
-*/
+/* Real FFT using the full complex kernel, retaining the historical packed
+   one-based layout: data[1]=DC, data[2]=Nyquist, then positive frequencies.
+   The inverse remains unnormalised in the historical sense (divide by n). */
 {
-	int	i,i1,i2,i3,i4,n2p3;
-	double	c1=0.5,c2,h1r,h1i,h2r,h2i;
-	double	wr,wi,wpr,wpi,wtemp,theta;
+    double *spectrum;
+    int k, length;
 
-	theta = 3.141592653589793/(double) n;
-	if(isign == 1) {
-		c2 = -0.5;
-		dfour1(data,n,1);
+    if (n < 1 || (n & (n - 1)) != 0 || (isign != 1 && isign != -1))
+        nrerror("Invalid size or direction in real FFT");
+    length = 2 * n;
+    spectrum = (double *)calloc((size_t)2 * length + 1, sizeof(*spectrum));
+    if (spectrum == NULL) nrerror("Allocation failure in real FFT");
 
-	} else {
-		c2 = 0.5;
-		theta = -theta;
-	}
-	wtemp = sin(0.5*theta);
-	wpr = -2.0*wtemp*wtemp;
-	wpi = sin(theta);
-	wr = 1.0+wpr;
-	wi = wpi;
-	n2p3 = 2*n+3;
-	for(i=2;i<=n/2;i++) {
-		i4  =  1+(i3=n2p3-(i2=1+(i1=i+i-1)));
-		h1r =  c1*(data[i1]+data[i3]);
-		h1i =  c1*(data[i2]-data[i4]);
-		h2r = -c2*(data[i2]+data[i4]);
-		h2i =  c2*(data[i1]-data[i3]);
-		data[i1] =  h1r+wr*h2r-wi*h2i;
-		data[i2] =  h1i+wr*h2i+wi*h2r;
-		data[i3] =  h1r-wr*h2r+wi*h2i;
-		data[i4] = -h1i+wr*h2i+wi*h2r;
-		wr = (wtemp=wr)*wpr-wi*wpi+wr;
-		wi = wi*wpr+wtemp*wpi+wi;
-	}
-	if(isign == 1) {
-		data[1] = (h1r=data[1])+data[2];
-		data[2] = h1r - data[2];
-	} else {
-		data[1]=c1*((h1r=data[1])+data[2]);
-		data[2]=c1*(h1r-data[2]);
-		dfour1(data,n,-1);
-	}
+    if (isign == 1) {
+        for (k = 0; k < length; ++k) {
+            spectrum[2 * k + 1] = data[k + 1];
+            spectrum[2 * k + 2] = 0.0;
+        }
+        dfour1(spectrum, length, 1);
+        data[1] = spectrum[1];
+        data[2] = spectrum[2 * n + 1];
+        for (k = 1; k < n; ++k) {
+            data[2 * k + 1] = spectrum[2 * k + 1];
+            data[2 * k + 2] = spectrum[2 * k + 2];
+        }
+    } else {
+        spectrum[1] = data[1];
+        spectrum[2] = 0.0;
+        spectrum[2 * n + 1] = data[2];
+        spectrum[2 * n + 2] = 0.0;
+        for (k = 1; k < n; ++k) {
+            double real = data[2 * k + 1];
+            double imag = data[2 * k + 2];
+            spectrum[2 * k + 1] = real;
+            spectrum[2 * k + 2] = imag;
+            spectrum[2 * (length - k) + 1] = real;
+            spectrum[2 * (length - k) + 2] = -imag;
+        }
+        dfour1(spectrum, length, -1);
+        for (k = 0; k < length; ++k) data[k + 1] = 0.5 * spectrum[2 * k + 1];
+    }
+    free(spectrum);
 }
 /******************************************************************************/
 /*									      */

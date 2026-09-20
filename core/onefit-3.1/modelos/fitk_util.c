@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <float.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,10 +7,8 @@
 #include "fitk_util.h"
 #include "fitutil.h"
 
-#define EPS	1.0e-4
-#define	JMAX	14
-#define	JMAXP	JMAX+1
-#define	K	5
+#define EPS1	3.0e-11
+#define EPS	8.0e-5
 
 /*****************************************************************************/
 /*                             FITK_UTIL.C                                   */
@@ -145,96 +144,86 @@ void	clear_struct(Function *f_struct, int n_par)
 /*                                                                           */
 /*****************************************************************************/
 double smidpnt(Function *X, int p, int n)
-// int	  p,n;
-// Function *X;
-/*
-This routine computes the n'th stage of refinement of an extended midpoint rule
-X is input as a pointer to the structure Function to integrated between limits
-of parameter p also input. When called with n=1, the routine returns the crudes
-t an estimate of int(f(x)dx,a,b). Subsequent calls with n=2,3... (in that seque
-ncial order) will improve the accuracy by adding (2/3)x3^(n-1) additional inter
-ior points.
-*/
+/* Stateful midpoint refinement retained for legacy callers. */
 {
-	double 	a,b;
-	double	tnm,sum,del,ddel;
-	double	*s,*x,*it;
-	int	j;
-
-	x = &(*X).par[p].val;
-	s = &(*X).par[p].min_v;
-	it= &(*X).par[p].step_v;
-
-	a = r_plow(X,p);
-	b = r_phigh(X,p);
-	
-	if(a == b) return(0.0);
-
-	if (n == 1) {
-		*it=1;
-		*x = 0.5*(a+b);
-		*s=(b-a)*FUNC(X);
-		return( *s );
-	} 
-	else {
-		tnm = *it;
-		del=(b-a)/(3.0*tnm);
-		ddel=del+del;
-		*x=a+0.5*del;
-		sum=0.0;
-		for (j=1;j<= *it;j++) {
-			sum += FUNC(X);
-			*x += ddel;
-			sum += FUNC(X);
-			*x += del;
-		}
-		*it *= 3;
-		*s=(*s+(b-a)*sum/tnm)/3.0; 
-		return( *s );
-	}
+    double a = r_plow(X, p), b = r_phigh(X, p);
+    double *value = &X->par[p].val;
+    double *estimate = &X->par[p].min_v;
+    double *panels = &X->par[p].step_v;
+    int j;
+    if (n < 1) nrerror("Invalid refinement level in midpoint integration");
+    if (a == b) return 0.0;
+    if (n == 1) {
+        *panels = 1.0;
+        *value = 0.5 * (a + b);
+        *estimate = (b - a) * FUNC(X);
+        return *estimate;
+    }
+    {
+        double previous_panels = *panels;
+        double spacing = (b - a) / (3.0 * previous_panels);
+        double total = 0.0;
+        *value = a + 0.5 * spacing;
+        for (j = 0; j < (int)previous_panels; ++j) {
+            total += FUNC(X);
+            *value += 2.0 * spacing;
+            total += FUNC(X);
+            *value += spacing;
+        }
+        *panels = 3.0 * previous_panels;
+        *estimate = (*estimate + (b - a) * total / previous_panels) / 3.0;
+    }
+    return *estimate;
 }
 /*****************************************************************************/
 /*                                                                           */
 /*****************************************************************************/
-double	sqromo(Function *X, double (*choose)(Function *x, int a, int b), int p)
-// double	 (*choose)();
-// int	 p;
-// Function *X;
-/*
-Romberg integration on an open interval. Returns the integral of the function 
-func from a to b, using any specified integrating routine choose and Romberg
-method. Normally choose wil be an open formula, not evaluating yhe function at
-the end points. It is assumed that choose triples the numder of steps on each
-call, and that its error series contains only even powers of the number of 
-steps. The routines midpnt and midinf among others ( see NR Book), are possible
-choices for choose.
-*/
+static double ofe_simpson_value(Function *X, int p, double x)
 {
-	int	 j;
-	double   ss,dss,h[JMAXP+1],s[JMAXP+1];
+    w_pval(X, p, x);
+    return FUNC(X);
+}
 
-	h[1]=1.0;
-	for (j=1;j<=JMAX;j++) {
-/*		printf("call to integrating routine no. %d\n",j);	     */
-		s[j]=(*choose)(X,p,j);
-		if (j >= K) {
-			dpolint(&h[j-K],&s[j-K],K,0.0,&ss,&dss);
-			if ( fabs(dss) < EPS*fabs(ss) ) return(ss);
-		}
-		s[j+1]=s[j];
-		h[j+1]=h[j]/9.0;
-	}
-	nrerror("Too many steps in routine QROMO");
-	return 0.0;
+static double ofe_simpson_refine(Function *X, int p, double left, double right,
+                                 double fleft, double fmid, double fright,
+                                 double whole, double tolerance, int depth)
+{
+    double mid = 0.5 * (left + right);
+    double lmid = 0.5 * (left + mid);
+    double rmid = 0.5 * (mid + right);
+    double flmid = ofe_simpson_value(X, p, lmid);
+    double frmid = ofe_simpson_value(X, p, rmid);
+    double left_area = (mid - left) * (fleft + 4.0 * flmid + fmid) / 6.0;
+    double right_area = (right - mid) * (fmid + 4.0 * frmid + fright) / 6.0;
+    double refined = left_area + right_area;
+
+    if (depth <= 0 || fabs(refined - whole) <= 15.0 * tolerance)
+        return refined + (refined - whole) / 15.0;
+    return ofe_simpson_refine(X, p, left, mid, fleft, flmid, fmid,
+                              left_area, tolerance * 0.5, depth - 1)
+         + ofe_simpson_refine(X, p, mid, right, fmid, frmid, fright,
+                              right_area, tolerance * 0.5, depth - 1);
+}
+
+double sqromo(Function *X, double (*choose)(Function *a, int b, int c), int p)
+/* Adaptive Simpson integration replacing the old Romberg/midpoint tableau.
+   `choose` remains accepted for source compatibility; the adaptive evaluator
+   controls refinement directly and evaluates the supplied function at finite
+   points including the interval endpoints. */
+{
+    double left = r_plow(X, p), right = r_phigh(X, p);
+    double mid, fleft, fmid, fright, whole, tolerance;
+    (void)choose;
+    if (left == right) return 0.0;
+    mid = 0.5 * (left + right);
+    fleft = ofe_simpson_value(X, p, left);
+    fmid = ofe_simpson_value(X, p, mid);
+    fright = ofe_simpson_value(X, p, right);
+    whole = (right - left) * (fleft + 4.0 * fmid + fright) / 6.0;
+    tolerance = 1.0e-10 + EPS * fabs(whole);
+    return ofe_simpson_refine(X, p, left, right, fleft, fmid, fright,
+                              whole, tolerance, 20);
 }
 /*****************************************************************************/
 /*                                                                           */
 /*****************************************************************************/
-#undef  EPS	
-#undef 	JMAX
-#undef	JMAXP
-#undef	K	
-/*****************************************************************************/
-/*                                                                           */
-/*****************************************************************************/
-

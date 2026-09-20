@@ -7,6 +7,8 @@
 #include "stdio.h"
 #include "math.h"
 #include <stdlib.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 #include "fitutil.h" 
 
@@ -34,13 +36,29 @@ void gfitn_error(char error_text[],char option_msg[])
 /*****************************************************************************/
 /*                                                                           */
 /*****************************************************************************/
+/* The public one-based allocation API is retained for source compatibility.
+   Allocation is centralized here so bounds and byte-size overflow are checked
+   before the historical indexed pointer view is returned. */
+static void *indexed_alloc(int low, int high, size_t width, const char *name)
+{
+   size_t count;
+   unsigned char *base;
+   if (high < low || width == 0 ||
+       (size_t)(high - low) > SIZE_MAX / width - 1)
+      nrerror("invalid indexed allocation range");
+   count = (size_t)(high - low) + 1;
+   base = (unsigned char *)calloc(count, width);
+   if (!base) {
+      char message[96];
+      snprintf(message, sizeof(message), "allocation failure in %s()", name);
+      nrerror(message);
+   }
+   return base - (ptrdiff_t)low * (ptrdiff_t)width;
+}
+
 int *ivector(int nl, int nh)
 {
-   int *v;
-
-   v=(int *)malloc((unsigned) (nh-nl+1)*sizeof(int));
-   if (!v) nrerror("allocation failure in ivector()");
-   return v-nl;
+   return (int *)indexed_alloc(nl, nh, sizeof(int), "ivector");
 }
 
 /*****************************************************************************/
@@ -48,11 +66,7 @@ int *ivector(int nl, int nh)
 /*****************************************************************************/
 double *dvector(int nl, int nh)
 {
-   double *v;
-
-   v=(double *)malloc((unsigned) (nh-nl+1)*sizeof(double));
-   if (!v) nrerror("allocation failure in dvector()");
-   return v-nl;
+   return (double *)indexed_alloc(nl, nh, sizeof(double), "dvector");
 }
 
 /*****************************************************************************/
@@ -60,11 +74,7 @@ double *dvector(int nl, int nh)
 /*****************************************************************************/
 char *cvector(int nl, int nh)
 {
-   char *v;
-
-   v=(char *)malloc((unsigned) (nh-nl+1)*sizeof(char));
-   if (!v) nrerror("allocation failure in cvector()");
-   return v-nl;
+   return (char *)indexed_alloc(nl, nh, sizeof(char), "cvector");
 }
 
 /*****************************************************************************/
@@ -75,14 +85,12 @@ double **dmatrix(int nrl, int nrh, int ncl, int nch)
    int i;
    double **m;
 
-   m=(double **) malloc((unsigned) (nrh-nrl+1)*sizeof(double*));
+   m=(double **) indexed_alloc(nrl, nrh, sizeof(double *), "dmatrix");
    if (!m) nrerror("allocation failure 1 in dmatrix()");
-   m -= nrl;
 
    for(i=nrl;i<=nrh;i++) {
-      m[i]=(double *) malloc((unsigned) (nch-ncl+1)*sizeof(double));
+      m[i]=(double *) indexed_alloc(ncl, nch, sizeof(double), "dmatrix");
       if (!m[i]) nrerror("allocation failure 2 in dmatrix()");
-      m[i] -= ncl;
    }
    return m;
 }
@@ -95,14 +103,12 @@ char **cmatrix(int nrl, int nrh, int ncl, int nch)
    int i;
    char **m;
 
-   m=(char **) malloc((unsigned) (nrh-nrl+1)*sizeof(char*));
+   m=(char **) indexed_alloc(nrl, nrh, sizeof(char *), "cmatrix");
    if (!m) nrerror("allocation failure 1 in cmatrix()");
-   m -= nrl;
 
    for(i=nrl;i<=nrh;i++) {
-      m[i]=(char *) malloc((unsigned) (nch-ncl+1)*sizeof(char));
+      m[i]=(char *) indexed_alloc(ncl, nch, sizeof(char), "cmatrix");
       if (!m[i]) nrerror("allocation failure 2 in cmatrix()");
-      m[i] -= ncl;
    }
    return m;
 }
@@ -112,11 +118,7 @@ char **cmatrix(int nrl, int nrh, int ncl, int nch)
 /*****************************************************************************/
 float *vector(int nl, int nh)
 {
-   float *v;
-
-   v=(float *)malloc((unsigned) (nh-nl+1)*sizeof(float));
-   if (!v) nrerror("allocation failure in vector()");
-   return v-nl;
+   return (float *)indexed_alloc(nl, nh, sizeof(float), "vector");
 }
 
 /*****************************************************************************/
@@ -127,14 +129,12 @@ float **matrix(int nrl, int nrh, int ncl, int nch)
    int i;
    float **m;
 
-   m=(float **) malloc((unsigned) (nrh-nrl+1)*sizeof(float*));
+   m=(float **) indexed_alloc(nrl, nrh, sizeof(float *), "matrix");
    if (!m) nrerror("allocation failure 1 in matrix()");
-   m -= nrl;
 
    for(i=nrl;i<=nrh;i++) {
-      m[i]=(float *) malloc((unsigned) (nch-ncl+1)*sizeof(float));
+      m[i]=(float *) indexed_alloc(ncl, nch, sizeof(float), "matrix");
       if (!m[i]) nrerror("allocation failure 2 in matrix()");
-      m[i] -= ncl;
    }
    return m;
 }
@@ -292,102 +292,169 @@ double logT1(double x)
 /*****************************************************************************/
 /*                                                                           */
 /*****************************************************************************/
-void dpolint(double xa[],double ya[],int n, double x, double *y, double *dy)
-/*
-Given arrays xa[1..n] and ya[1..n], and given a value x, this routine returns
-an error estimate dy. If P(x) is the polinomial of degree n-1 such that P(xa)=
-ya, i=1,...,n, then the returned value y=P(x).
-*/
+static int ofe_barycentric_eval(const double xa[], const double ya[], int n,
+                                 int skip, double x, double *value)
 {
-   int   i,m,ns=1;
-   double   den,dif,dift,ho,hp,w;
-   double   *c,*d;
+   int i, j;
+   double *weights;
+   double numerator, denominator, term;
 
-   dif=fabs(x-xa[1]);
-   c=dvector(1,n);
-   d=dvector(1,n);
-   for (i=1;i<=n;i++) {
-      if ( (dift=fabs(x-xa[i])) < dif) {
-         ns=i;
-         dif=dift;
+   if (skip < 0 || skip > n) skip = 0;
+   weights = (double *)calloc((size_t)n + 1, sizeof(*weights));
+   if (weights == NULL) return 0;
+   for (i = 1; i <= n; ++i) {
+      if (i == skip) continue;
+      weights[i] = 1.0;
+      for (j = 1; j <= n; ++j) {
+         if (j == skip) continue;
+         if (i == j) continue;
+         if (xa[i] == xa[j]) {
+            free(weights);
+            return 0;
+         }
+         weights[i] /= xa[i] - xa[j];
       }
-      c[i]=ya[i];
-      d[i]=ya[i];
    }
-
-   *y=ya[ns--];
-   for (m=1;m<n;m++) {
-      for (i=1;i<=n-m;i++) {
-         ho=xa[i]-x;
-         hp=xa[i+m]-x;
-         w=c[i+1]-d[i];
-         if ( (den=ho-hp) == 0.0) nrerror("Error in POLINT");
-         den=w/den;
-         d[i]=hp*den;
-         c[i]=ho*den;
+   for (i = 1; i <= n; ++i) {
+      if (i == skip) continue;
+      if (x == xa[i]) {
+         *value = ya[i];
+         free(weights);
+         return 1;
       }
-
-      *y += (*dy=(2*ns < (n-m) ? c[ns+1] : d[ns--]));
-
    }
-   free_dvector(d,1,n);
-   free_dvector(c,1,n);
+   numerator = 0.0;
+   denominator = 0.0;
+   for (i = 1; i <= n; ++i) {
+      if (i == skip) continue;
+      term = weights[i] / (x - xa[i]);
+      numerator += term * ya[i];
+      denominator += term;
+   }
+   free(weights);
+   if (denominator == 0.0) return 0;
+   *value = numerator / denominator;
+   return isfinite(*value);
+}
+
+void dpolint(double xa[],double ya[],int n, double x, double *y, double *dy)
+/* Independent barycentric polynomial interpolation, preserving OneFit's
+   historical one-based array convention. */
+{
+   double reduced, distance, candidate;
+   int i, skip;
+
+   if (n < 1 || !ofe_barycentric_eval(xa, ya, n, 0, x, y))
+      nrerror("Invalid input in polynomial interpolation");
+   if (n == 1) {
+      *dy = 0.0;
+      return;
+   }
+   /* Estimate the error by removing the node nearest to x.  For n=2 this
+      exactly reproduces the correction from linear interpolation, while for
+      larger n it remains a degree-(n-2) comparison without the old tableau.
+   */
+   skip = 1;
+   distance = fabs(x - xa[1]);
+   for (i = 2; i <= n; ++i) {
+      candidate = fabs(x - xa[i]);
+      if (candidate < distance) { distance = candidate; skip = i; }
+   }
+   if (!ofe_barycentric_eval(xa, ya, n, skip, x, &reduced))
+      nrerror("Invalid input in polynomial interpolation");
+   *dy = *y - reduced;
 }
 /*****************************************************************************/
 /*                                                                           */
 /*****************************************************************************/
 void dsplint(double xa[], double ya[], double y2a[], int n, double x, double *y)
+/* Evaluate a cubic spline from its tabulated values and second derivatives.
+   This keeps the historical one-based API and extrapolates with the first or
+   last interval, as the original OneFit callers expect. */
 {
-   int klo,khi,k;
-   double h,b,a;
+   int lo, hi;
+   double h, left_weight, right_weight;
 
-   klo=1;
-   khi=n;
-   while (khi-klo > 1) {
-      k=(khi+klo) >> 1;
-      if (xa[k] > x) khi=k;
-      else klo=k;
+   if (n < 2) nrerror("Too few points in spline interpolation");
+   lo = 1;
+   hi = n;
+   while (hi - lo > 1) {
+      int mid = lo + (hi - lo) / 2;
+      if (xa[mid] > x) hi = mid;
+      else lo = mid;
    }
-   h=xa[khi]-xa[klo];
-   if (h == 0.0) nrerror("Bad XA input to routine SPLINT");
-   a=(xa[khi]-x)/h;
-   b=(x-xa[klo])/h;
-   *y=a*ya[klo]+b*ya[khi]+((a*a*a-a)*y2a[klo]+(b*b*b-b)*y2a[khi])*(h*h)/6.0;
+   h = xa[hi] - xa[lo];
+   if (h == 0.0) nrerror("Repeated XA value in spline interpolation");
+   left_weight = (xa[hi] - x) / h;
+   right_weight = (x - xa[lo]) / h;
+   *y = left_weight * ya[lo] + right_weight * ya[hi]
+      + ((left_weight * left_weight * left_weight - left_weight) * y2a[lo]
+       + (right_weight * right_weight * right_weight - right_weight) * y2a[hi])
+        * (h * h) / 6.0;
 }
 /*****************************************************************************/
 /*                                                                           */
 /*****************************************************************************/
-void dspline( double x[], double y[], int n, double yp1, double ypn, double y2[])
-// double x[],y[],yp1,ypn,y2[];
-// int n;
+void dspline(double x[], double y[], int n, double yp1, double ypn,
+              double y2[])
+/* Cubic-spline second derivatives solved with an explicit tridiagonal system.
+   The one-based public API and the original natural/clamped boundary rules
+   are retained. */
 {
-   int i,k;
-   double p,qn,sig,un,*u;
+   int i;
+   double *lower, *diag, *upper, *rhs;
 
-   u=dvector(1,n-1);
-   if (yp1 > 0.99e30)
-      y2[1]=u[1]=0.0;
-   else {
-      y2[1] = -0.5;
-      u[1]=(3.0/(x[2]-x[1]))*((y[2]-y[1])/(x[2]-x[1])-yp1);
+   if (n < 2) nrerror("Too few points in spline");
+   lower = (double *)calloc((size_t)n + 1, sizeof(*lower));
+   diag = (double *)calloc((size_t)n + 1, sizeof(*diag));
+   upper = (double *)calloc((size_t)n + 1, sizeof(*upper));
+   rhs = (double *)calloc((size_t)n + 1, sizeof(*rhs));
+   if (!lower || !diag || !upper || !rhs)
+      nrerror("Allocation failure in spline");
+
+   if (yp1 > 0.99e30) {
+      diag[1] = 1.0;
+      rhs[1] = 0.0;
+   } else {
+      diag[1] = 2.0;
+      upper[1] = 1.0;
+      rhs[1] = 6.0 * ((y[2] - y[1]) / (x[2] - x[1]) - yp1)
+             / (x[2] - x[1]);
    }
-   for (i=2;i<=n-1;i++) {
-      sig=(x[i]-x[i-1])/(x[i+1]-x[i-1]);
-      p=sig*y2[i-1]+2.0;
-      y2[i]=(sig-1.0)/p;
-      u[i]=(y[i+1]-y[i])/(x[i+1]-x[i]) - (y[i]-y[i-1])/(x[i]-x[i-1]);
-      u[i]=(6.0*u[i]/(x[i+1]-x[i-1])-sig*u[i-1])/p;
+   for (i = 2; i < n; ++i) {
+      double hleft = x[i] - x[i - 1];
+      double hright = x[i + 1] - x[i];
+      double span = x[i + 1] - x[i - 1];
+      if (hleft == 0.0 || hright == 0.0 || span == 0.0)
+         nrerror("Repeated X value in spline");
+      lower[i] = hright / span;
+      diag[i] = 2.0;
+      upper[i] = hleft / span;
+      rhs[i] = 6.0 * ((y[i + 1] - y[i]) / hright
+                    - (y[i] - y[i - 1]) / hleft) / span;
    }
-   if (ypn > 0.99e30)
-      qn=un=0.0;
-   else {
-      qn=0.5;
-      un=(3.0/(x[n]-x[n-1]))*(ypn-(y[n]-y[n-1])/(x[n]-x[n-1]));
+   if (ypn > 0.99e30) {
+      lower[n] = 0.0;
+      diag[n] = 1.0;
+      rhs[n] = 0.0;
+   } else {
+      lower[n] = 1.0;
+      diag[n] = 2.0;
+      rhs[n] = 6.0 * (ypn - (y[n] - y[n - 1]) / (x[n] - x[n - 1]))
+             / (x[n] - x[n - 1]);
    }
-   y2[n]=(un-qn*u[n-1])/(qn*y2[n-1]+1.0);
-   for (k=n-1;k>=1;k--)
-      y2[k]=y2[k]*y2[k+1]+u[k];
-   free_dvector(u,1,n-1);
+   for (i = 2; i <= n; ++i) {
+      double factor = lower[i] / diag[i - 1];
+      diag[i] -= factor * upper[i - 1];
+      rhs[i] -= factor * rhs[i - 1];
+   }
+   y2[n] = rhs[n] / diag[n];
+   for (i = n - 1; i >= 1; --i)
+      y2[i] = (rhs[i] - upper[i] * y2[i + 1]) / diag[i];
+   free(lower);
+   free(diag);
+   free(upper);
+   free(rhs);
 }
 /*****************************************************************************/
 /*                                                                           */
@@ -761,9 +828,6 @@ char **buffer_lines(FILE *file, int nlines, int *nchar_line)
 /****************************************************************************/
 /*                                                                           */
 /*****************************************************************************/
-
-
-
 
 
 
