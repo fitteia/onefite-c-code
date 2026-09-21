@@ -1,0 +1,3 @@
+# Optional external model bundles are nested repositories. Their sources and
+# generated archives are not part of the license-clean base C repository.
+/extensions/
