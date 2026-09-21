@@ -7,19 +7,17 @@ https://github.com/fitteia/OneFit-Engine
 
 Third-party and separately licensed material
 
-1. NAG-derived Fortran routines
+1. NAG-derived Fortran routines (moved out of this repository)
 
-local/Florence_f.f contains routines carrying NAG copyright notices and
-historical NAG Library release markers, including F01BCF, F02AXF, F02AYF,
-P01ABF, and P01ABZ (the latter two now internally named OFP01ABF/OFP01ABZ,
-a pre-existing rename to avoid symbol collisions - same NAG origin).
-F01BCY, F01BCZ, X02AJF, X02AKF, X04AAF, and X04BAF were removed by the
-Numerical Recipes replacement work (see git history for
-local/Florence_f.f) and no longer appear in this file.
-Those notices are preserved in the source. This repository does not assert
-that those routines are relicensed under the Artistic License 2.0. Their
-redistribution rights and the applicable NAG terms must be verified before
-redistributing binaries or source that contains them.
+local/Florence_c.c/.h and local/Florence_f.f (the latter carrying NAG
+copyright notices and historical NAG Library release markers, including
+F01BCF, F02AXF, F02AYF, P01ABF, and P01ABZ) were removed from this
+repository entirely and relocated to a separately-licensed external
+extensions bundle (see .gitignore's own /extensions/ entry) - this base
+repository no longer contains any NAG-derived source. Anyone building
+against the base repository alone has none of that licensing exposure;
+the external extensions bundle carries its own license/notice for
+whatever it contains.
 
 2. Minuit
 
