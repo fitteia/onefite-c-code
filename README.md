@@ -78,11 +78,20 @@ Artistic License 2.0; see [LICENSE](LICENSE). The repository also contains or
 builds with separately licensed material. See [NOTICE](NOTICE) before
 redistributing source or binaries.
 
-In particular, `local/Florence_f.f` preserves NAG copyright notices in several
-Fortran routines. Those routines are not assumed to be covered by the
-Artistic License, and their redistribution terms must be verified. Minuit is a
-separate GPLv2 project, and the vendored `epstopdf` script carries its own
-3-clause BSD-style license.
+This base repository does not contain any NAG-derived source. The Florence
+model bundle (`Florence_c.c`/`.h`, `Florence_f.f`), which historically carried
+NAG copyright notices in several Fortran routines, has been moved out
+entirely into a separately-licensed external extensions bundle (see
+[NOTICE](NOTICE) item 1) - anyone building against this base repository alone
+has none of that licensing exposure. That bundle's NAG-derived eigensolver
+has since been replaced with an independent, from-scratch implementation
+(Householder tridiagonalization + implicit QL, not derived from NAG's code)
+and is published separately under the Artistic License 2.0 at
+[onefite-external-extensions](https://github.com/fitteia/onefite-external-extensions);
+the original NAG-derived version remains available in a separate, private
+repository for anyone who already holds the appropriate NAG Library license.
+Minuit is a separate GPLv2 project, and the vendored `epstopdf` script
+carries its own 3-clause BSD-style license.
 
 The tree also retains GNU getopt sources under the GNU Library General Public
 License (LGPL-2-or-later). Its license text is in
