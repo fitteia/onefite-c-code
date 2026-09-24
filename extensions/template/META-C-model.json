@@ -1,0 +1,12 @@
+{
+  "name": "example",
+  "functions": {
+    "ExampleGain": {
+      "devision": "Examples",
+      "function": "ExampleGain(x,gain)",
+      "call": "y(x,gain:2[0<10]) = ExampleGain(x,gain)",
+      "parameters": "x,gain",
+      "description": "Template model: y = gain * x. Replace with your own."
+    }
+  }
+}

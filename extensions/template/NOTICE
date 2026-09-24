@@ -1,0 +1,7 @@
+example - template extension
+
+State who wrote this extension, the licence it is under, and any third-party
+code it contains (with that code's own licence and notices). If the extension
+may NOT be redistributed (for example it embeds code under a restrictive
+licence), set "license.redistributable" to false in extension.json: it is then
+never included in a default install, a package, or a public repository.

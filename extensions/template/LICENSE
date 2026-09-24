@@ -1,0 +1,3 @@
+REPLACE THIS FILE with the full text of the licence your extension is released
+under, and set "license.spdx" in extension.json to match. The build refuses an
+extension that lists no licence file.

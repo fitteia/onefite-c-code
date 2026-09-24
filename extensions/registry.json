@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "extensions": {
+    "florence": {
+      "repo": "https://github.com/fitteia/onefite-ext-florence.git",
+      "redistributable": true,
+      "default": true,
+      "description": "Florence paramagnetic relaxation models (clean-room eigensolver, Artistic-2.0)"
+    }
+  }
+}

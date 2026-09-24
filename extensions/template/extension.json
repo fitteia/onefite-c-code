@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "name": "example",
+  "version": "0.1.0",
+  "requires_base": ">=4.0.4",
+  "provides": ["ExampleGain"],
+  "conflicts": [],
+  "sources": ["example.c"],
+  "headers": ["example.h"],
+  "extra_libs": [],
+  "metadata": "META-C-model.json",
+  "tests": "tests/run_tests.sh",
+  "license": {
+    "spdx": "Artistic-2.0",
+    "files": ["LICENSE", "NOTICE"],
+    "redistributable": true
+  }
+}
