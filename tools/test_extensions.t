@@ -132,7 +132,7 @@ sub install { my ($c, $root, @extra) = @_; return run('install', '--c-root', $c,
 }
 
 SKIP: {
-    skip 'needs make and a C compiler', 50 unless $CAN_BUILD;
+    skip 'needs make and a C compiler', 53 unless $CAN_BUILD;
 
     # ---- install ------------------------------------------------------
     {
@@ -214,6 +214,27 @@ SKIP: {
         install($c, $root);
         unlike(slurp("$root/etc/extensions.mk"), qr/-include/, 'no extensions: no force-include');
         ok(-f "$root/include/ext/extensions.h", '...but the header exists (harmless, keeps hooks uniform)');
+    }
+
+    # ---- the compilers extension.mk will use, even where make's own defaults are wrong ---
+    {
+        # GNU make defines FC as f77 and CC as cc by default, so a plain `FC ?=`
+        # never applies: on macOS (no f77) every Fortran extension failed with
+        # "f77: No such file or directory". Debian happens to link f77 to gfortran.
+        my $dir = tempdir(CLEANUP => 1);
+        spew("$dir/show.mk", "include $C_ROOT/extensions/extension.mk\nshow:\n\t\@echo \$(\$(WHAT))\n");
+        my $var = sub {
+            my ($what, $env) = @_;
+            my $out = qx{cd $dir && $env make -s -f show.mk show WHAT=$what C_ROOT=. ROOT=. 2>&1};
+            chomp $out;
+            return $out;
+        };
+        my $fc = $var->('FC', '');
+        is($fc, 'gfortran', 'FC defaults to gfortran, not make\'s built-in f77');
+        my $fc_env = $var->('FC', 'FC=myfortran');
+        is($fc_env, 'myfortran', '...and an FC the caller sets still wins');
+        my $cc = $var->('CC', 'CC=mycc');
+        is($cc, 'mycc', 'a caller-set CC also still wins');
     }
 
     # ---- legacy Fortran: fflags silences the deleted-feature warnings ---

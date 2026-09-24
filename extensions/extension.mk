@@ -28,7 +28,13 @@ endif
 ifeq ($(origin CC),default)
 	CC := $(REAL_GCC)
 endif
-FC ?= gfortran
+# `FC ?=` alone is not enough: GNU make predefines FC as f77, so ?= never
+# applies. That only worked where f77 happens to be a gfortran link (Debian,
+# Ubuntu); on macOS there is no f77 and every Fortran extension failed with
+# "f77: No such file or directory". Same reason CC is handled above.
+ifeq ($(origin FC),default)
+	FC := gfortran
+endif
 
 C_ROOT ?= ..
 ROOT ?= $(C_ROOT)
