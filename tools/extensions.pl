@@ -4,6 +4,8 @@
 #   extensions.pl list      [--c-root DIR]
 #   extensions.pl validate  PATH [--c-root DIR]
 #   extensions.pl install   --root DIR [--c-root DIR] [--test] [--include-template]
+#   extensions.pl fetch     [--c-root DIR] [--extension SPEC]... [--no-default-extensions]
+#                           [--ref REF] [--transport https|http|ssh]
 #
 # `install` validates every extensions/<name>/extension.json, refuses
 # conflicting or duplicate function sets, builds each with
@@ -12,6 +14,10 @@
 #
 #   <root>/etc/extensions.mk    EXTERNAL_MODEL_LIBS / EXTERNAL_MODEL_INCLUDES
 #   <c-root>/META-CATALOG.json  META-C.json + every extension's functions
+#
+# `fetch` is the other half both runtimes share: it resolves which extensions
+# to install (registry defaults + --extension NAME | NAME=URL[@REF]) and clones
+# or updates each into extensions/<name>; `install` then builds them.
 #
 # META-C.json itself is never modified. Plain perl + core modules only (perl
 # is already a declared dependency of onefite; python is not).
@@ -347,6 +353,128 @@ sub write_catalog {
     spew("$c_root/META-CATALOG.json", encode_catalog(\%merged));
 }
 
+# ---- fetch: choose and download extensions -------------------------------
+
+my %BUILTIN_REGISTRY = (
+    florence => { repo => 'https://github.com/fitteia/onefite-ext-florence.git', default => 1 },
+);
+
+sub load_registry {
+    my ($c_root) = @_;
+    my $p = "$c_root/extensions/registry.json";
+    if (-f $p) {
+        my $doc = eval { JSON::PP->new->utf8->decode(slurp($p)) };
+        if (ref $doc eq 'HASH' && ref $doc->{extensions} eq 'HASH' && %{ $doc->{extensions} }) {
+            my %reg;
+            for my $name (keys %{ $doc->{extensions} }) {
+                my $e = $doc->{extensions}{$name};
+                next unless ref $e eq 'HASH' && is_string($e->{repo});
+                $reg{$name} = { repo => $e->{repo}, default => ($e->{default} ? 1 : 0) };
+            }
+            return \%reg if %reg;
+        }
+    }
+    return \%BUILTIN_REGISTRY;
+}
+
+# NAME, NAME=URL or NAME=URL@REF. A '@' only starts a ref when nothing after it
+# looks like part of a URL, so git@github.com:owner/repo.git still parses.
+sub parse_spec {
+    my ($v) = @_;
+    my ($name, $rest) = split /=/, $v, 2;
+    $name //= '';
+    fail("--extension '$v': name must match [a-z][a-z0-9_-]*") unless $name =~ /^[a-z][a-z0-9_-]*$/;
+    my %spec = (name => $name, required => 1);
+    return \%spec unless defined $rest;
+    fail("--extension '$v': empty URL after '='") if $rest eq '';
+    if ($rest =~ /^(.*)\@([^\@:\/]+)$/) {
+        ($rest, $spec{ref}) = ($1, $2);
+    }
+    $spec{url} = $rest;
+    return \%spec;
+}
+
+sub transport_url {
+    my ($url, $mode) = @_;
+    return $url unless $url =~ m{^https://github\.com/(.*)$};
+    return "git\@github.com:$1" if ($mode // '') eq 'ssh';
+    return "http://github.com/$1" if ($mode // '') eq 'http';
+    return $url;
+}
+
+# Everything named with --extension is required; registry defaults are optional
+# (a default that can't be fetched must not fail an otherwise good install).
+sub resolve_extensions {
+    my ($reg, $o) = @_;
+    my %by;
+    for my $s (@{ $o->{specs} }) {
+        my %s = %$s;
+        unless (defined $s{url}) {
+            my $e = $reg->{ $s{name} }
+                or fail("unknown extension '$s{name}' (not in extensions/registry.json) - give its repository: --extension $s{name}=URL[\@REF]");
+            $s{url} = transport_url($e->{repo}, $o->{transport});
+        }
+        $s{ref} //= $o->{ref};
+        $by{ $s{name} } = \%s;
+    }
+    unless ($o->{no_defaults}) {
+        for my $name (keys %$reg) {
+            next if $by{$name} || !$reg->{$name}{default};
+            $by{$name} = { name => $name, url => transport_url($reg->{$name}{repo}, $o->{transport}), ref => $o->{ref}, required => 0 };
+        }
+    }
+    return [ map { $by{$_} } sort keys %by ];
+}
+
+sub git_ok { return system('git', @_) == 0 }
+
+sub checkout_ref {
+    my ($dir, $url, $ref) = @_;
+    if (-d $dir) {
+        return 0 unless git_ok('-C', $dir, 'fetch', 'origin', $ref);
+    } else {
+        make_path(dirname($dir));
+        return 0 unless git_ok('clone', $url, $dir);
+        return 0 unless git_ok('-C', $dir, 'fetch', 'origin', $ref);
+    }
+    # FETCH_HEAD, not $ref: `git fetch origin <ref>` never moves a local branch
+    # of the same name, so checking out the name would silently keep stale code.
+    return git_ok('-C', $dir, 'checkout', '--force', 'FETCH_HEAD');
+}
+
+sub cmd_fetch {
+    my ($o) = @_;
+    my $c_root = abs_path($o->{c_root}) // fail("no such directory: $o->{c_root}");
+    my $specs = resolve_extensions(load_registry($c_root), {
+        specs => $o->{specs}, no_defaults => $o->{no_defaults},
+        ref => $o->{ref} // 'main', transport => $o->{transport},
+    });
+    # A host upgraded from the older in-place-merge flow has META-C.json modified;
+    # restore it (best effort - not every c-root is a git checkout).
+    {
+        open my $olderr, '>&', \*STDERR;
+        open STDERR, '>', File::Spec->devnull;
+        system('git', '-C', $c_root, 'checkout', '--', 'META-C.json');
+        open STDERR, '>&', $olderr;
+    }
+    my $failed_required = 0;
+    for my $s (@$specs) {
+        my $dir = "$c_root/extensions/$s->{name}";
+        if (checkout_ref($dir, $s->{url}, $s->{ref})) {
+            open my $fh, '-|', 'git', '-C', $dir, 'rev-parse', 'HEAD' or fail("git: $!");
+            chomp(my $sha = <$fh> // '?');
+            close $fh;
+            print STDERR "===> extension $s->{name} at $sha ($s->{ref})\n";
+        } elsif ($s->{required}) {
+            print STDERR "error: could not fetch extension $s->{name} from $s->{url}\n";
+            $failed_required = 1;
+        } else {
+            print STDERR "===> WARNING: could not fetch default extension $s->{name} - continuing without updating it\n";
+        }
+    }
+    return $failed_required ? 1 : 0;
+}
+
 sub cmd_list {
     my ($o) = @_;
     my ($exts, $legacy) = discover("$o->{c_root}/extensions", $o->{include_template});
@@ -402,18 +530,22 @@ sub main {
     my %o = (c_root => abs_path(dirname(abs_path($0)) . '/..'));
     my $ok = GetOptionsFromArray(\@argv,
         'c-root=s' => \$o{c_root}, 'root=s' => \$o{root},
-        'test' => \$o{test}, 'include-template' => \$o{include_template});
+        'test' => \$o{test}, 'include-template' => \$o{include_template},
+        'extension=s' => sub { push @{ $o{specs} }, parse_spec($_[1]) },
+        'no-default-extensions' => \$o{no_defaults}, 'ref=s' => \$o{ref}, 'transport=s' => \$o{transport});
     fail('bad options') unless $ok;
     if ($cmd eq 'list') {
         cmd_list(\%o);
     } elsif ($cmd eq 'validate') {
         $o{path} = shift @argv // fail('validate needs a PATH');
         cmd_validate(\%o);
+    } elsif ($cmd eq 'fetch') {
+        return cmd_fetch(\%o);
     } elsif ($cmd eq 'install') {
         fail('install needs --root DIR') unless defined $o{root};
         cmd_install(\%o);
     } else {
-        print STDERR "usage: extensions.pl {list|validate PATH|install --root DIR} [--c-root DIR] [--test] [--include-template]\n";
+        print STDERR "usage: extensions.pl {list|validate PATH|install --root DIR|fetch} [--c-root DIR] [--test] [--include-template]\n       fetch: [--extension NAME[=URL[\@REF]]]... [--no-default-extensions] [--ref REF] [--transport https|http|ssh]\n";
         return 2;
     }
     return 0;

@@ -276,4 +276,83 @@ SKIP: {
     }
 }
 
+# ---- fetch ---------------------------------------------------------------
+my $HAVE_GIT = system('command -v git >/dev/null 2>&1') == 0;
+SKIP: {
+    skip 'needs git', 22 unless $HAVE_GIT;
+
+    my $git = sub { my $dir = shift; sh('git', '-C', $dir, '-c', 'user.name=t', '-c', 'user.email=t@t', @_) };
+    my $mkrepo = sub {
+        my ($content) = @_;
+        my $r = tempdir(CLEANUP => 1);
+        sh('git', 'init', '-q', '-b', 'main', $r);
+        spew("$r/extension.json", $content);
+        $git->($r, 'add', '.');
+        $git->($r, 'commit', '-q', '-m', 'one');
+        return $r;
+    };
+    my $fetch = sub { my ($c, @a) = @_; return run('fetch', '--c-root', $c, @a) };
+
+    {
+        my $c = tree();
+        my ($rc, $out) = $fetch->($c, '--extension', 'nope');
+        is($rc, 1, 'unknown name (not in registry, no URL) fails');
+        like($out, qr/unknown extension 'nope'.*--extension nope=URL/s, '...and says how to give a URL');
+        my ($rc2, $out2) = $fetch->($c, '--extension', '../evil');
+        is($rc2, 1, 'a path-like name is rejected (it would become a directory)');
+        like($out2, qr/name must match/, '...with a clear message');
+        my ($rc3) = $fetch->($c, '--no-default-extensions');
+        is($rc3, 0, 'nothing requested and defaults off: succeeds');
+        ok(!glob("$c/extensions/*/") , '...and fetches nothing');
+    }
+    {
+        my $repo = $mkrepo->('{"v":1}');
+        my $c = tree();
+        my ($rc, $out) = $fetch->($c, '--no-default-extensions', '--extension', "mine=$repo");
+        is($rc, 0, 'NAME=URL clones into extensions/NAME') or diag $out;
+        like(slurp("$c/extensions/mine/extension.json"), qr/"v":1/, '...with the repo content');
+
+        spew("$repo/extension.json", '{"v":2}');
+        $git->($repo, 'commit', '-q', '-am', 'two');
+        my ($rc2) = $fetch->($c, '--no-default-extensions', '--extension', "mine=$repo");
+        is($rc2, 0, 'a second fetch succeeds');
+        like(slurp("$c/extensions/mine/extension.json"), qr/"v":2/, '...and picks up the new commit (not the stale local branch)');
+
+        $git->($repo, 'tag', 'v2');
+        spew("$repo/extension.json", '{"v":3}');
+        $git->($repo, 'commit', '-q', '-am', 'three');
+        my ($rc3) = $fetch->($c, '--no-default-extensions', '--extension', "mine=$repo\@v2");
+        is($rc3, 0, 'NAME=URL@REF fetches that ref');
+        like(slurp("$c/extensions/mine/extension.json"), qr/"v":2/, '...and lands on the tag, not the branch tip');
+    }
+    {
+        # registry default: optional
+        my $repo = $mkrepo->('{"v":1}');
+        my $c = tree();
+        spew("$c/extensions/registry.json", $json->encode({ schema => 1, extensions => {
+            good => { repo => $repo, default => JSON::PP::true },
+            gone => { repo => '/nonexistent/repo.git', default => JSON::PP::true },
+            opt  => { repo => $repo },
+        } }));
+        my ($rc, $out) = $fetch->($c);
+        is($rc, 0, 'an unreachable DEFAULT extension only warns') or diag $out;
+        like($out, qr/WARNING: could not fetch default extension gone/, '...and says so');
+        ok(-f "$c/extensions/good/extension.json", 'the reachable default was fetched');
+        ok(!-e "$c/extensions/opt", 'a non-default registry entry is not fetched unless named');
+        my ($rc2, $out2) = $fetch->($c, '--extension', 'gone');
+        is($rc2, 1, 'the same unreachable extension, NAMED, is an error');
+        like($out2, qr/could not fetch extension gone/, '...and says so');
+        my ($rc3) = $fetch->($c, '--extension', 'opt', '--no-default-extensions');
+        is($rc3, 0, 'a registry name resolves through its URL');
+        ok(-f "$c/extensions/opt/extension.json" && !-e "$c/extensions/good/x", '...fetching only what was named');
+    }
+    {
+        my $c = tree();
+        spew("$c/extensions/registry.json", $json->encode({ schema => 1, extensions => {
+            florence => { repo => 'https://github.com/fitteia/onefite-ext-florence.git' } } }));
+        my ($rc, $out) = $fetch->($c, '--transport', 'ssh', '--no-default-extensions', '--extension', 'florence');
+        like($out, qr/git\@github\.com:fitteia\/onefite-ext-florence\.git/, '--transport ssh rewrites a registry https URL');
+    }
+}
+
 done_testing();
