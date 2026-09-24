@@ -20,7 +20,7 @@ clean:
 # Writes $(ROOT)/etc/extensions.mk and META-CATALOG.json; TEST=1 also runs each
 # extension's own tests.
 extensions:
-	python3 tools/extensions.py install --c-root . --root $(ROOT)$(PREFIX) $(if $(TEST),--test)
+	perl tools/extensions.pl install --c-root . --root $(ROOT)$(PREFIX) $(if $(TEST),--test)
 
 extensions-selftest:
-	python3 tools/test_extensions.py -v
+	perl tools/test_extensions.t

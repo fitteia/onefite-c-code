@@ -23,7 +23,7 @@ its own repository). This folder tracks only the contract: this README,
 5. Replace `LICENSE` and `NOTICE` with your own and build:
 
 ```
-python3 tools/extensions.py validate extensions/mymodel
+perl tools/extensions.pl validate extensions/mymodel
 make extensions ROOT=/path/to/ofe-root TEST=1
 ```
 
@@ -45,7 +45,8 @@ make extensions ROOT=/path/to/ofe-root TEST=1
 | `conflicts` | no | extensions that cannot be installed together with this one |
 | `requires_base` | no | e.g. `">=4.0.4"` |
 | `extra_libs` | no | link flags such as `"-llapack"` |
-| `tests` | no | a shell script, run with `TEST=1`; gets `C_ROOT`, `ROOT`, `EXT_NAME` |
+| `tests` | no | a script, run with `TEST=1` (through its shebang if executable); gets `C_ROOT`, `ROOT`, `EXT_NAME` |
+| `makefile` | no | your own Makefile to build with instead of the shared rules; must provide an `install` target that honours `C_ROOT` and `ROOT`. A Makefile not named here is ignored |
 
 ## Rules the build enforces
 
