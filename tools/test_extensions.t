@@ -80,6 +80,7 @@ sub install { my ($c, $root, @extra) = @_; return run('install', '--c-root', $c,
         'non-boolean redistrib' => [{ license => { spdx => 'MIT', files => ['LICENSE'], redistributable => 'yes' } }, qr/redistributable must be true or false/],
         'bad extra_libs'        => [{ extra_libs => ['lapack'] }, qr/-l\/-L flags/],
         'bad source type'       => [{ sources => ['example.h'] }, qr/unsupported source type/],
+        'declarations not in headers' => [{ declarations => ['other.h'] }, qr/declarations entry is not listed in headers: other\.h/],
         'empty provides'        => [{ provides => [] }, qr/provides must not be empty/],
         'empty sources'         => [{ sources => [] }, qr/sources must not be empty/],
         'empty licence files'   => [{ license => { spdx => 'MIT', files => [], redistributable => JSON::PP::true } }, qr/license.files must list/],
@@ -130,7 +131,7 @@ sub install { my ($c, $root, @extra) = @_; return run('install', '--c-root', $c,
 }
 
 SKIP: {
-    skip 'needs make and a C compiler', 30 unless $CAN_BUILD;
+    skip 'needs make and a C compiler', 50 unless $CAN_BUILD;
 
     # ---- install ------------------------------------------------------
     {
@@ -168,6 +169,50 @@ SKIP: {
         is((install($c, $root))[0], 0, 'reinstall after removing the extension succeeds');
         unlike(slurp("$c/META-CATALOG.json"), qr/ExampleGain/, '...and it is gone from the catalog');
         unlike(slurp("$root/etc/extensions.mk"), qr/example/, '...and from extensions.mk');
+    }
+
+    # ---- what a fit needs: declarations + flags that compile ----------
+    {
+        my $c = tree();
+        add_template($c);
+        my $root = tempdir(CLEANUP => 1);
+        is((install($c, $root))[0], 0, 'template installs');
+        my $rroot = abs_path($root);
+        like(slurp("$root/include/ext/extensions.h"), qr/#include "example\/example\.h"/, 'extensions.h declares the extension via its headers (default)');
+        my ($flags) = slurp("$root/etc/extensions.mk") =~ /^EXTERNAL_MODEL_INCLUDES := (.*)$/m;
+        like($flags, qr/-include \Q$rroot\E\/include\/ext\/extensions\.h/, 'extensions.mk force-includes it');
+        my ($libs) = slurp("$root/etc/extensions.mk") =~ /^EXTERNAL_MODEL_LIBS := (.*)$/m;
+        # Like a generated fit: never includes the extension's own header, and
+        # is compiled so an undeclared function is an error.
+        my $t = tempdir(CLEANUP => 1);
+        spew("$t/fit.c", "int main(void){ return (int)ExampleGain(3.0, 2.0) - 6; }\n");
+        my $cc = "cc -std=gnu99 -Werror=implicit-function-declaration -Wall $flags $t/fit.c -L$rroot/lib $libs -lm -o $t/fit 2>&1";
+        my $out = qx{$cc};
+        is($? >> 8, 0, 'a fit-style source using the extension function compiles and links') or diag $out;
+        is(system("$t/fit"), 0, '...and runs correctly');
+        unlike(qx{cc -std=gnu99 -Werror=implicit-function-declaration -Wall $t/fit.c -c -o /dev/null 2>&1}, qr/^$/, '(control: without the generated flags it does not compile)');
+    }
+    {
+        my $c = tree();
+        my $d = add_template($c);
+        spew("$d/internal.h", "void ext_internal_(double *x);\n");
+        my $m = $json->decode(slurp("$d/extension.json"));
+        $m->{headers} = ['example.h', 'internal.h'];
+        $m->{declarations} = ['example.h'];
+        spew("$d/extension.json", $json->encode($m));
+        my $root = tempdir(CLEANUP => 1);
+        is((install($c, $root))[0], 0, 'install with declarations narrower than headers');
+        my $h = slurp("$root/include/ext/extensions.h");
+        like($h, qr/example\/example\.h/, 'declared header is included for fits');
+        unlike($h, qr/internal\.h/, 'internal header is not');
+        ok(-f "$root/include/ext/example/internal.h", '...but is still installed');
+    }
+    {
+        my $c = tree();
+        my $root = tempdir(CLEANUP => 1);
+        install($c, $root);
+        unlike(slurp("$root/etc/extensions.mk"), qr/-include/, 'no extensions: no force-include');
+        ok(-f "$root/include/ext/extensions.h", '...but the header exists (harmless, keeps hooks uniform)');
     }
 
     # ---- catalog order and format ------------------------------------

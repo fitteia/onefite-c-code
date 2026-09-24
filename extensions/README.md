@@ -40,6 +40,7 @@ make extensions ROOT=/path/to/ofe-root TEST=1
 | `provides` | yes | exact list of function names you define |
 | `sources` | yes | `.c` (C) and `.f` (fixed-form Fortran) files |
 | `headers` | no | installed to `include/ext/<name>/` |
+| `declarations` | no | the headers (a subset of `headers`) that declare your model functions for fit code; default: all `headers`. Fit code only sees `userlib.h`, so functions must be declared here. Keep internal prototypes (e.g. Fortran entry points) out of this list |
 | `metadata` | yes | JSON file with a `functions` object (see template) |
 | `license` | yes | `spdx`, `files` (at least one), `redistributable` (true/false) |
 | `conflicts` | no | extensions that cannot be installed together with this one |
