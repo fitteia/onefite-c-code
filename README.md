@@ -56,6 +56,35 @@ reaching into `core/onefit-3.1`'s source tree directly. The top-level `makefile`
 sequences this correctly - `make install` handles it, no manual ordering needed unless you're
 invoking the subdirectory makefiles directly.
 
+## Installing the engine safely
+
+`tools/engine.pl install` builds and installs the whole engine - minuit, this core and its
+extensions - into an install root. onefite-go's `doctor --install` and OneFit-Engine's `INSTALL`
+only fetch minuit and this repo and then call it, so both install the same way:
+
+```bash
+perl tools/engine.pl install --c-root . --root <install-root> --minuit-dir <minuit-checkout>
+```
+
+- **Nothing breaks the installed engine.** The installed engine files (libraries, headers,
+  `etc/engine.mk`, `etc/extensions.mk`, the model catalog) are backed up first. The new engine
+  must build, and a link test must pass: every object of every extension linked with the per-fit
+  makefile's own link line, so whatever an extension calls resolves. If anything fails, the
+  backup is put back exactly and the previous engine keeps working. The root's own files
+  (OneFit-Engine's `lib/*.rakumod`, `bin/onefite`) are never touched.
+- **Upgrades keep your extensions.** With no extension options it updates the extensions already
+  installed - recorded in `<root>/etc/engine.json` - not the registry defaults, so a machine with
+  `florence-nag` keeps it. One that can't be fetched (offline, a private repository) keeps its
+  current checkout. Only a fresh install gets the defaults.
+- **`--keep-minuit`** leaves an installed `lib/libminuit.a` alone and rebuilds only the core and
+  the extensions.
+- **The old extensions layout is repaired** (an extensions clone occupying `extensions/` itself,
+  from before 2026): the clone becomes `extensions/florence`, this repo's own files there come
+  back, and its old repository name is repointed to `onefite-ext-florence`.
+- **One step back:** `perl tools/engine.pl rollback --c-root . --root <install-root>` restores the
+  engine as it was before the last install.
+- Two installs into one root never run at the same time (`<root>/.engine.lock`).
+
 ## Version
 
 `LIBNUMBER` in [`libnumber.mk`](libnumber.mk) is the core's version, defined only there. The

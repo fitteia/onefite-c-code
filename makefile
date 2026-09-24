@@ -8,7 +8,7 @@ LEGACY_LIBNUMBER=4.0.4
 OS=LINUX
 PERLCORE=/usr/lib/$(ARCH)-linux-gnu/perl/$(PERLVERSION)/CORE
 
-.PHONY: install clean extensions extensions-selftest api-check api-accept api-selftest test
+.PHONY: install clean extensions extensions-selftest api-check api-accept api-selftest engine-selftest test
 
 install:
 	make OS=$(OS) ROOT=$(ROOT) PERLCORE=$(PERLCORE) -C core/onefit-3.1 install-fitteia
@@ -50,4 +50,7 @@ api-accept:
 api-selftest:
 	perl tools/test_api.t
 
-test: extensions-selftest api-selftest api-check
+engine-selftest:
+	perl tools/test_engine.t
+
+test: extensions-selftest api-selftest engine-selftest api-check
