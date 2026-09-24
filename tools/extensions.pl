@@ -5,7 +5,7 @@
 #   extensions.pl validate  PATH [--c-root DIR]
 #   extensions.pl install   --root DIR [--c-root DIR] [--test] [--include-template]
 #   extensions.pl fetch     [--c-root DIR] [--extension SPEC]... [--no-default-extensions]
-#                           [--ref REF] [--transport https|http|ssh]
+#                           [--ref REF] [--transport https|http|ssh] [--json]
 #
 # `install` validates every extensions/<name>/extension.json, refuses
 # conflicting or duplicate function sets, builds each with
@@ -457,7 +457,15 @@ sub cmd_fetch {
         system('git', '-C', $c_root, 'checkout', '--', 'META-C.json');
         open STDERR, '>&', $olderr;
     }
-    my $failed_required = 0;
+    # --json: stdout carries ONLY the result array; everything else (git's own
+    # output included) goes to stderr.
+    my $realout;
+    if ($o->{json}) {
+        open $realout, '>&', \*STDOUT;
+        open STDOUT, '>&', \*STDERR;
+    }
+    my (@results, $failed_required);
+    $failed_required = 0;
     for my $s (@$specs) {
         my $dir = "$c_root/extensions/$s->{name}";
         if (checkout_ref($dir, $s->{url}, $s->{ref})) {
@@ -465,6 +473,7 @@ sub cmd_fetch {
             chomp(my $sha = <$fh> // '?');
             close $fh;
             print STDERR "===> extension $s->{name} at $sha ($s->{ref})\n";
+            push @results, { name => $s->{name}, repo => $s->{url}, ref => $s->{ref}, commit => $sha };
         } elsif ($s->{required}) {
             print STDERR "error: could not fetch extension $s->{name} from $s->{url}\n";
             $failed_required = 1;
@@ -472,6 +481,7 @@ sub cmd_fetch {
             print STDERR "===> WARNING: could not fetch default extension $s->{name} - continuing without updating it\n";
         }
     }
+    print {$realout} JSON::PP->new->utf8->canonical->encode(\@results), "\n" if $realout;
     return $failed_required ? 1 : 0;
 }
 
@@ -532,7 +542,7 @@ sub main {
         'c-root=s' => \$o{c_root}, 'root=s' => \$o{root},
         'test' => \$o{test}, 'include-template' => \$o{include_template},
         'extension=s' => sub { push @{ $o{specs} }, parse_spec($_[1]) },
-        'no-default-extensions' => \$o{no_defaults}, 'ref=s' => \$o{ref}, 'transport=s' => \$o{transport});
+        'no-default-extensions' => \$o{no_defaults}, 'ref=s' => \$o{ref}, 'transport=s' => \$o{transport}, 'json' => \$o{json});
     fail('bad options') unless $ok;
     if ($cmd eq 'list') {
         cmd_list(\%o);
@@ -545,7 +555,7 @@ sub main {
         fail('install needs --root DIR') unless defined $o{root};
         cmd_install(\%o);
     } else {
-        print STDERR "usage: extensions.pl {list|validate PATH|install --root DIR|fetch} [--c-root DIR] [--test] [--include-template]\n       fetch: [--extension NAME[=URL[\@REF]]]... [--no-default-extensions] [--ref REF] [--transport https|http|ssh]\n";
+        print STDERR "usage: extensions.pl {list|validate PATH|install --root DIR|fetch} [--c-root DIR] [--test] [--include-template]\n       fetch: [--extension NAME[=URL[\@REF]]]... [--no-default-extensions] [--ref REF] [--transport https|http|ssh] [--json]\n";
         return 2;
     }
     return 0;

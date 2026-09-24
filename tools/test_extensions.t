@@ -279,7 +279,7 @@ SKIP: {
 # ---- fetch ---------------------------------------------------------------
 my $HAVE_GIT = system('command -v git >/dev/null 2>&1') == 0;
 SKIP: {
-    skip 'needs git', 22 unless $HAVE_GIT;
+    skip 'needs git', 26 unless $HAVE_GIT;
 
     my $git = sub { my $dir = shift; sh('git', '-C', $dir, '-c', 'user.name=t', '-c', 'user.email=t@t', @_) };
     my $mkrepo = sub {
@@ -345,6 +345,18 @@ SKIP: {
         my ($rc3) = $fetch->($c, '--extension', 'opt', '--no-default-extensions');
         is($rc3, 0, 'a registry name resolves through its URL');
         ok(-f "$c/extensions/opt/extension.json" && !-e "$c/extensions/good/x", '...fetching only what was named');
+    }
+    {
+        my $repo = $mkrepo->('{"v":1}');
+        chomp(my $sha = qx{git -C $repo rev-parse HEAD});
+        my $c = tree();
+        my $out = qx{perl $DRIVER fetch --c-root $c --no-default-extensions --extension mine=$repo --json 2>/dev/null};
+        is($? >> 8, 0, 'fetch --json succeeds');
+        my $got = eval { $json->decode($out) };
+        ok($got && @$got == 1, '...stdout is exactly one JSON array (git output stays on stderr)') or diag $out;
+        is_deeply($got, [{ name => 'mine', repo => $repo, ref => 'main', commit => $sha }], '...naming the extension, repo, ref and resolved commit');
+        my $none = qx{perl $DRIVER fetch --c-root $c --no-default-extensions --json 2>/dev/null};
+        is_deeply($json->decode($none), [], 'nothing fetched: an empty array');
     }
     {
         my $c = tree();
