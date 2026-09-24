@@ -108,7 +108,7 @@ sub load_extension {
         need($name eq $dir, $where, "name '$name' must equal its directory name '$dir'");
     }
     need(is_string($data->{version}), $where, 'version must be a string');
-    for my $key (qw(provides sources headers conflicts extra_libs)) {
+    for my $key (qw(provides sources headers conflicts extra_libs fflags)) {
         next unless exists $data->{$key};
         need(is_list_of_strings($data->{$key}), $where, "$key must be a list of strings");
     }
@@ -120,6 +120,11 @@ sub load_extension {
     }
     files_exist($path, $data->{sources}, $where, 'source');
     files_exist($path, $data->{headers} // [], $where, 'header');
+    # fflags land in a make variable that a recipe expands inside a shell line, so
+    # accept only plain compiler options (-std=legacy, -fno-range-check, -O2 ...).
+    for my $f (@{ $data->{fflags} // [] }) {
+        need(scalar($f =~ /^-[A-Za-z][A-Za-z0-9_=+.\/-]*$/), $where, "fflags entries must be plain compiler options like -std=legacy: $f");
+    }
     if (exists $data->{declarations}) {
         need(is_list_of_strings($data->{declarations}), $where, 'declarations must be a list of strings');
         my %h = map { $_ => 1 } @{ $data->{headers} // [] };
@@ -166,6 +171,7 @@ sub load_extension {
         headers   => $data->{headers} // [],
         declarations => $data->{declarations} // $data->{headers} // [],
         extra_libs => $data->{extra_libs} // [],
+        fflags    => $data->{fflags} // [],
         metadata  => $data->{metadata},
         tests     => $data->{tests},
         makefile  => $data->{makefile},
@@ -284,6 +290,7 @@ sub build_extension {
             'EXT_HEADERS=' . join(' ', @{ $ext->{headers} }),
             'EXT_LICENSE_FILES=' . join(' ', @{ $ext->{license}{files} }),
             "EXT_METADATA=$ext->{metadata}",
+            'EXT_FFLAGS=' . join(' ', @{ $ext->{fflags} }),
             "C_ROOT=$c_root", "ROOT=$root", 'install');
     }
     print STDERR "===> building extension $ext->{name} $ext->{data}{version}\n";

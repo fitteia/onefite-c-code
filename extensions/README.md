@@ -46,6 +46,7 @@ make extensions ROOT=/path/to/ofe-root TEST=1
 | `conflicts` | no | extensions that cannot be installed together with this one |
 | `requires_base` | no | e.g. `">=4.0.4"` |
 | `extra_libs` | no | link flags such as `"-llapack"` |
+| `fflags` | no | extra Fortran compiler options, e.g. `["-std=legacy"]` for Fortran 77 code that gfortran now calls a "deleted feature" (real `DO` bounds, shared `DO` labels). Plain options only. The shared default stays strict, so new code is still checked |
 | `tests` | no | a script, run with `TEST=1` (through its shebang if executable); gets `C_ROOT`, `ROOT`, `EXT_NAME` |
 | `makefile` | no | your own Makefile to build with instead of the shared rules; must provide an `install` target that honours `C_ROOT` and `ROOT`. A Makefile not named here is ignored |
 

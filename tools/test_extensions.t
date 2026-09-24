@@ -81,6 +81,7 @@ sub install { my ($c, $root, @extra) = @_; return run('install', '--c-root', $c,
         'bad extra_libs'        => [{ extra_libs => ['lapack'] }, qr/-l\/-L flags/],
         'bad source type'       => [{ sources => ['example.h'] }, qr/unsupported source type/],
         'declarations not in headers' => [{ declarations => ['other.h'] }, qr/declarations entry is not listed in headers: other\.h/],
+        'bad fflags'            => [{ fflags => ['-std=legacy; rm -rf /'] }, qr/fflags entries must be plain compiler options/],
         'empty provides'        => [{ provides => [] }, qr/provides must not be empty/],
         'empty sources'         => [{ sources => [] }, qr/sources must not be empty/],
         'empty licence files'   => [{ license => { spdx => 'MIT', files => [], redistributable => JSON::PP::true } }, qr/license.files must list/],
@@ -213,6 +214,29 @@ SKIP: {
         install($c, $root);
         unlike(slurp("$root/etc/extensions.mk"), qr/-include/, 'no extensions: no force-include');
         ok(-f "$root/include/ext/extensions.h", '...but the header exists (harmless, keeps hooks uniform)');
+    }
+
+    # ---- legacy Fortran: fflags silences the deleted-feature warnings ---
+    SKIP: {
+        skip 'needs gfortran', 4 unless system('command -v gfortran >/dev/null 2>&1') == 0;
+        my $legacy = "      REAL FUNCTION LEGSUM(SET)\n      REAL SET\n      LEGSUM = 0.\n      DO K=1,SET\n      LEGSUM = LEGSUM + K\n      ENDDO\n      RETURN\n      END\n";
+        my $build = sub {
+            my (%extra) = @_;
+            my $c = tree();
+            my $d = add_template($c, 'legacy', %extra);
+            spew("$d/leg.f", $legacy);
+            my $m = $json->decode(slurp("$d/extension.json"));
+            push @{ $m->{sources} }, 'leg.f';
+            @$m{ keys %extra } = values %extra;
+            spew("$d/extension.json", $json->encode($m));
+            return install($c, tempdir(CLEANUP => 1) . '/ofe');
+        };
+        my ($rc, $out) = $build->();
+        is($rc, 0, 'legacy Fortran builds without fflags') or diag $out;
+        like($out, qr/Warning: .*DO loop/, '...but gfortran warns about the deleted feature');
+        my ($rc2, $out2) = $build->(fflags => ['-std=legacy']);
+        is($rc2, 0, 'the same source builds with fflags -std=legacy') or diag $out2;
+        unlike($out2, qr/Warning/, '...and gfortran no longer warns');
     }
 
     # ---- catalog order and format ------------------------------------
