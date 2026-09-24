@@ -70,6 +70,24 @@ It changes rarely - fixes and internal changes are tracked by git commits alone:
   declaring `requires_base` `">=5.0.0"` are then refused until someone checks them and raises it -
   `>=` only reaches within one major.
 
+You don't have to remember when to change it. `make api-check` compares what the installed
+headers declare (functions, constants, struct layouts) with the snapshot in
+[`api/core-api.txt`](api/core-api.txt), recorded for the current `LIBNUMBER`. Comments, spacing
+and the bodies of functions or function-like macros defined in headers don't count. If something
+was added it asks for a new minor, if something was removed or changed a new major, and shows
+what differs:
+
+```
+core API changed since 5.0.0:
+  added:   local/NEWMODEL.h: double NEWMODEL(double x);
+something was added -> needs LIBNUMBER 5.1.0 (it is 5.0.0).
+run: make api-accept   (sets LIBNUMBER=5.1.0 and records the new API)
+```
+
+`make api-accept` then sets `LIBNUMBER` and records the snapshot; commit both files, saying in the
+message what changed. The check runs in `make test`, and `check-and-push-ofe-repos.sh` runs it on
+the commit it is about to push, skipping the push with that message until the API is accepted.
+
 It was `4.0.4` from the early 2000s until 5.0.0, which introduced this scheme; the old number had
 tracked the libraries since 1993. `make install` also links the `4.0.4` library names to the
 current ones, so onefite-go and OneFit-Engine releases whose per-fit makefile still links
