@@ -279,7 +279,7 @@ SKIP: {
 # ---- fetch ---------------------------------------------------------------
 my $HAVE_GIT = system('command -v git >/dev/null 2>&1') == 0;
 SKIP: {
-    skip 'needs git', 26 unless $HAVE_GIT;
+    skip 'needs git', 40 unless $HAVE_GIT;
 
     my $git = sub { my $dir = shift; sh('git', '-C', $dir, '-c', 'user.name=t', '-c', 'user.email=t@t', @_) };
     my $mkrepo = sub {
@@ -357,6 +357,37 @@ SKIP: {
         is_deeply($got, [{ name => 'mine', repo => $repo, ref => 'main', commit => $sha }], '...naming the extension, repo, ref and resolved commit');
         my $none = qx{perl $DRIVER fetch --c-root $c --no-default-extensions --json 2>/dev/null};
         is_deeply($json->decode($none), [], 'nothing fetched: an empty array');
+    }
+    {
+        # a named extension that declares a conflict with a default replaces it
+        my $dflt = $mkrepo->('{"v":"default"}');
+        my $repl = $mkrepo->('{"conflicts":["dflt"]}');
+        my $other = $mkrepo->('{"v":"other-default"}');
+        my $reg = sub { my ($c) = @_; spew("$c/extensions/registry.json", $json->encode({ schema => 1, extensions => {
+            dflt  => { repo => $dflt,  default => JSON::PP::true },
+            other => { repo => $other, default => JSON::PP::true },
+        } })) };
+
+        my $c = tree(); $reg->($c);
+        my ($rc, $out) = $fetch->($c, '--extension', "repl=$repl");
+        is($rc, 0, 'a named extension that conflicts with a default: fetch succeeds') or diag $out;
+        ok(-f "$c/extensions/repl/extension.json", '...the named extension is fetched');
+        ok(!-e "$c/extensions/dflt", '...the conflicting default is NOT fetched');
+        like($out, qr/skipping default extension dflt: replaced by repl/, '...and the skip is reported');
+        ok(-f "$c/extensions/other/extension.json", '...a default it does not conflict with is still fetched');
+
+        my $c2 = tree(); $reg->($c2);
+        my ($rc2, $out2) = $fetch->($c2, '--extension', "repl=$repl", '--no-default-extensions');
+        is($rc2, 0, 'the same with defaults already off');
+
+        # a conflicting folder left by an earlier install is refused, never deleted
+        my $c3 = tree(); $reg->($c3);
+        $fetch->($c3, '--extension', 'dflt');
+        spew("$c3/extensions/dflt/local-change.txt", 'mine');
+        my ($rc3, $out3) = $fetch->($c3, '--extension', "repl=$repl");
+        is($rc3, 1, 'a leftover installed folder that conflicts is refused');
+        like($out3, qr/'repl' conflicts with the installed 'dflt' - remove extensions\/dflt/, '...naming both and the fix');
+        ok(-f "$c3/extensions/dflt/local-change.txt", '...and nothing was deleted');
     }
     {
         my $c = tree();

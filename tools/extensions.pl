@@ -442,6 +442,15 @@ sub checkout_ref {
     return git_ok('-C', $dir, 'checkout', '--force', 'FETCH_HEAD');
 }
 
+# The conflicts an extension declares in its manifest ([] if unreadable - the
+# full validation happens at install time).
+sub declared_conflicts {
+    my ($dir) = @_;
+    my $doc = eval { JSON::PP->new->utf8->decode(slurp("$dir/extension.json")) };
+    return [] unless ref $doc eq 'HASH' && ref $doc->{conflicts} eq 'ARRAY';
+    return [ grep { is_string($_) } @{ $doc->{conflicts} } ];
+}
+
 sub cmd_fetch {
     my ($o) = @_;
     my $c_root = abs_path($o->{c_root}) // fail("no such directory: $o->{c_root}");
@@ -464,16 +473,34 @@ sub cmd_fetch {
         open $realout, '>&', \*STDOUT;
         open STDOUT, '>&', \*STDERR;
     }
-    my (@results, $failed_required);
+    my (@results, $failed_required, %replaced);
     $failed_required = 0;
-    for my $s (@$specs) {
+    # Named (required) extensions first: one that declares a conflict with a
+    # default replaces it, so `--extension florence-nag=URL` needs no
+    # --no-default-extensions. A conflicting folder left by an earlier install is
+    # never deleted for you - that could hold local changes - but it is refused
+    # here, with the fix, rather than at build time.
+    for my $s (sort { $b->{required} <=> $a->{required} } @$specs) {
         my $dir = "$c_root/extensions/$s->{name}";
+        if (!$s->{required} && $replaced{ $s->{name} }) {
+            print STDERR "===> skipping default extension $s->{name}: replaced by $replaced{ $s->{name} }\n";
+            next;
+        }
         if (checkout_ref($dir, $s->{url}, $s->{ref})) {
             open my $fh, '-|', 'git', '-C', $dir, 'rev-parse', 'HEAD' or fail("git: $!");
             chomp(my $sha = <$fh> // '?');
             close $fh;
             print STDERR "===> extension $s->{name} at $sha ($s->{ref})\n";
             push @results, { name => $s->{name}, repo => $s->{url}, ref => $s->{ref}, commit => $sha };
+            next unless $s->{required};
+            for my $c (@{ declared_conflicts($dir) }) {
+                if (-d "$c_root/extensions/$c" && !grep { $_->{name} eq $c } @results) {
+                    print STDERR "error: extension '$s->{name}' conflicts with the installed '$c' - "
+                        . "remove extensions/$c (nothing is deleted for you) and run again\n";
+                    $failed_required = 1;
+                }
+                $replaced{$c} = $s->{name};
+            }
         } elsif ($s->{required}) {
             print STDERR "error: could not fetch extension $s->{name} from $s->{url}\n";
             $failed_required = 1;

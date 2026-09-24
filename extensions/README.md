@@ -56,6 +56,10 @@ make extensions ROOT=/path/to/ofe-root TEST=1
   Two implementations of the same functions (for example a public and a
   licensed variant of one model) also share linker symbols, so they cannot be
   linked together: declare them in each other's `conflicts` and install one.
+  When a named extension (`--extension NAME=URL`) declares a conflict with a
+  default one, `fetch` skips that default, so no extra flag is needed. A
+  conflicting folder left by an earlier install is refused with the fix (remove
+  it) - it is never deleted for you.
 - **Licensing is explicit.** Every extension names its licence files.
   `redistributable: false` means it must never be published, packaged or
   included in a default install - use it for anything you may not share.
