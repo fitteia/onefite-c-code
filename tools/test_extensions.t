@@ -30,7 +30,12 @@ sub tree {
     my $d = tempdir(CLEANUP => 1);
     make_path("$d/extensions", "$d/core/onefit-3.1");
     sh('cp', "$C_ROOT/extensions/extension.mk", "$d/extensions/");
-    spew("$d/core/onefit-3.1/makefile", "LIBNUMBER=" . ($o{libnumber} // '4.0.4') . "\n");
+    # --legacy: a core from before 5.0.0, whose version sat in its makefile
+    if ($o{legacy}) {
+        spew("$d/core/onefit-3.1/makefile", "LIBNUMBER=" . ($o{libnumber} // '4.0.4') . "\n");
+    } else {
+        spew("$d/libnumber.mk", "LIBNUMBER=" . ($o{libnumber} // '5.0.0') . "\n");
+    }
     spew("$d/META-C.json", $o{base_text} // '{"BPP": {"function": "BPP(f,a,tau)"}}');
     return $d;
 }
@@ -96,12 +101,33 @@ sub install { my ($c, $root, @extra) = @_; return run('install', '--c-root', $c,
 }
 {
     my $c = tree();
-    my $d = add_template($c, 'example', requires_base => '>=5.0');
+    my $d = add_template($c, 'example', requires_base => '>=5.1');
     my ($rc, $out) = run('validate', $d, '--c-root', $c);
     is($rc, 1, 'requires_base not met: rejected');
-    like($out, qr/requires base >=5\.0, this base is 4\.0\.4/, '...with both versions named');
-    my $d2 = add_template($c, 'newer', requires_base => '>=4.0.4');
+    like($out, qr/requires base >=5\.1, this base is 5\.0\.0/, '...with both versions named');
+    my $d2 = add_template($c, 'newer', requires_base => '>=5.0.0');
     is((run('validate', $d2, '--c-root', $c))[0], 0, 'requires_base met: accepted');
+    # 5.0.0 renumbered 4.0.4 without changing what extensions use
+    my $d3 = add_template($c, 'older', requires_base => '>=4.0.4');
+    is((run('validate', $d3, '--c-root', $c))[0], 0, 'written for 4.x: accepted by a 5.x core');
+}
+{
+    # same major only: a new major is not reached by >=
+    my $c = tree(libnumber => '6.0.0');
+    for my $req ('>=5.0.0', '>=4.0.4') {
+        (my $n = "old$req") =~ s/\W//g;
+        my $d = add_template($c, $n, requires_base => $req);
+        my ($rc, $out) = run('validate', $d, '--c-root', $c);
+        is($rc, 1, "requires_base $req on a 6.0.0 core: rejected");
+        like($out, qr/written for core 5\.x .* this core is 6\.0\.0 .* raise its requires_base to '>=6\.0\.0'/,
+            '...saying what to review and what to raise it to');
+    }
+}
+{
+    # a core from before libnumber.mk: the version is still read from its makefile
+    my $c = tree(legacy => 1);
+    my $d = add_template($c, 'example', requires_base => '>=4.0.4');
+    is((run('validate', $d, '--c-root', $c))[0], 0, 'pre-5.0.0 core: version read from the core makefile');
 }
 
 # ---- set checks (all must fail before anything is built) ---------------

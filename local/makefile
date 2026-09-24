@@ -5,7 +5,7 @@ ROOT=/home/fitteia
 PERLVERSION=5.36
 PERLCORE=/usr/lib/$(ARCH)-linux-gnu/perl/$(PERLVERSION)/CORE
 PREFIX=
-LIBNUMBER=4.0.4
+include ../libnumber.mk
 INTERFACE=UserLib
 
 UNAME_S := $(shell uname -s)

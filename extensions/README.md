@@ -44,7 +44,7 @@ make extensions ROOT=/path/to/ofe-root TEST=1
 | `metadata` | yes | JSON file with a `functions` object (see template) |
 | `license` | yes | `spdx`, `files` (at least one), `redistributable` (true/false) |
 | `conflicts` | no | extensions that cannot be installed together with this one |
-| `requires_base` | no | e.g. `">=4.0.4"` |
+| `requires_base` | no | the core version it was written for, e.g. `">=5.0.0"`; `>=` only reaches within the same major (see "Rules") |
 | `extra_libs` | no | link flags such as `"-llapack"` |
 | `fflags` | no | extra Fortran compiler options, e.g. `["-std=legacy"]` for Fortran 77 code that gfortran now calls a "deleted feature" (real `DO` bounds, shared `DO` labels). Plain options only. The shared default stays strict, so new code is still checked |
 | `tests` | no | a script, run with `TEST=1` (through its shebang if executable); gets `C_ROOT`, `ROOT`, `EXT_NAME` |
@@ -61,6 +61,9 @@ make extensions ROOT=/path/to/ofe-root TEST=1
   default one, `fetch` skips that default, so no extra flag is needed. A
   conflicting folder left by an earlier install is refused with the fix (remove
   it) - it is never deleted for you.
+- **Same core major.** A core's `LIBNUMBER` (`libnumber.mk`) changes major only when something
+  extensions may call changed or was removed, so `requires_base` `">=5.0.0"` accepts 5.x but not
+  6.0: the extension is refused, with what to review, until its `requires_base` is raised.
 - **Licensing is explicit.** Every extension names its licence files.
   `redistributable: false` means it must never be published, packaged or
   included in a default install - use it for anything you may not share.

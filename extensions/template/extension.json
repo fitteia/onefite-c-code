@@ -2,7 +2,7 @@
   "schema": 1,
   "name": "example",
   "version": "0.1.0",
-  "requires_base": ">=4.0.4",
+  "requires_base": ">=5.0.0",
   "provides": ["ExampleGain"],
   "conflicts": [],
   "sources": ["example.c"],

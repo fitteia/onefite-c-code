@@ -13,9 +13,10 @@ predates the split and traces the real history of these files, not a fresh impor
 
 - **`core/onefit-3.1/`** - the main engine: MINUIT driver (`gfitn.c`), data/parameter I/O, the
   results/plotting pipeline (`gfit_out.c`, `xmgr.c`), and the per-fit build recipe's own source
-  templates (`tabfunc.c`). Builds `libonefit-4.0.4.a` and `libonefit-util-4.0.4.a`.
+  templates (`tabfunc.c`). Builds `libonefit-5.0.0.a` and `libonefit-util-5.0.0.a`
+  (the number is `LIBNUMBER`, see [Version](#version)).
   - **`core/onefit-3.1/modelos/`** - a library of built-in model functions. Builds
-    `libonefit-modelos-4.0.4.a`. Depends on `core/onefit-3.1`'s own headers via a relative
+    `libonefit-modelos-5.0.0.a`. Depends on `core/onefit-3.1`'s own headers via a relative
     `-I..` - it must stay a structural sibling of `core/onefit-3.1`, wherever this repo itself
     ends up living.
   - **`core/onefit-3.1/perl/`** - small installed helper scripts: `pcop`, `pdf2mp4` (PDF-to-MP4,
@@ -42,7 +43,7 @@ static libraries themselves.
 
 **Dependencies to build**: `gcc`, `gfortran`, `make`, `ar` (binutils). Nothing else - no Perl,
 no Raku, no SWIG - are required to produce the four static libraries
-(`libonefit-4.0.4.a`, `libonefit-modelos-4.0.4.a`, `libonefit-util-4.0.4.a`, `libuserlib.a`) and
+(`libonefit-5.0.0.a`, `libonefit-modelos-5.0.0.a`, `libonefit-util-5.0.0.a`, `libuserlib.a`) and
 their headers. `PERLCORE`/`swig` only matter for the separate `AuxCode.so` module build, which
 `onefite-native` never uses at all, and which real `onefite` itself only builds as a (currently
 unused - nothing in `OneFit-Engine` loads it) side effect of the `gfitn` per-fit compile.
@@ -54,6 +55,27 @@ unused - nothing in `OneFit-Engine` loads it) side effect of the `gfitn` per-fit
 reaching into `core/onefit-3.1`'s source tree directly. The top-level `makefile` already
 sequences this correctly - `make install` handles it, no manual ordering needed unless you're
 invoking the subdirectory makefiles directly.
+
+## Version
+
+`LIBNUMBER` in [`libnumber.mk`](libnumber.mk) is the core's version, defined only there. The
+core, model and utility libraries carry it in their names (`libonefit-$(LIBNUMBER).a`),
+`make install` writes it to `$(ROOT)/etc/engine.mk` for the per-fit makefiles of onefite-go
+and OneFit-Engine, and extensions check it with `requires_base`.
+
+It changes rarely - fixes and internal changes are tracked by git commits alone:
+
+- **minor** (5.0 to 5.1): something extensions may call was added (a model, a function);
+- **major** (5.x to 6.0): something extensions may call was changed or removed. Extensions
+  declaring `requires_base` `">=5.0.0"` are then refused until someone checks them and raises it -
+  `>=` only reaches within one major.
+
+It was `4.0.4` from the early 2000s until 5.0.0, which introduced this scheme; the old number had
+tracked the libraries since 1993. `make install` also links the `4.0.4` library names to the
+current ones, so onefite-go and OneFit-Engine releases whose per-fit makefile still links
+`-lonefit-4.0.4` keep working, and extensions written for 4.x (`requires_base` `">=4.0.4"`)
+count as written for 5.x, since nothing they use changed. The state before this change is
+tagged `pre-5.0.0`.
 
 ## Vendored files
 

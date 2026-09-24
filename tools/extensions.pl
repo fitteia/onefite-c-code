@@ -191,7 +191,8 @@ sub files_exist {
 
 sub base_version {
     my ($c_root) = @_;
-    for my $rel (qw(core/onefit-3.1/makefile local/makefile)) {
+    # libnumber.mk since 5.0.0; the core makefile before that.
+    for my $rel (qw(libnumber.mk core/onefit-3.1/makefile local/makefile)) {
         my $p = "$c_root/$rel";
         next unless -f $p;
         return $1 if slurp($p) =~ /^LIBNUMBER\s*=\s*([0-9][0-9.]*)/m;
@@ -213,11 +214,24 @@ sub check_requires_base {
     my ($ext, $c_root) = @_;
     return unless $ext->{requires_base};
     my ($op, $want) = $ext->{requires_base} =~ /^\s*(>=|<=|==|>|<)\s*([0-9][0-9.]*)\s*$/
-        or fail("$ext->{name}: requires_base must look like '>=4.0.4'");
+        or fail("$ext->{name}: requires_base must look like '>=5.0.0'");
     my $have = base_version($c_root) // return;
     my $c = ver_cmp($have, $want);
     my %ok = ('>=' => $c >= 0, '<=' => $c <= 0, '==' => $c == 0, '>' => $c > 0, '<' => $c < 0);
     fail("$ext->{name} requires base $ext->{requires_base}, this base is $have") unless $ok{$op};
+    # A new major version changes something extensions may rely on, so
+    # ">=" and ">" only reach within the same major: an extension written
+    # for 5.x is not built against 6.0 until someone has reviewed it and
+    # raised its requires_base.
+    # 5.0.0 only renumbered 4.0.4 (nothing extensions use changed), so an
+    # extension written for 4.x counts as written for 5.x.
+    my ($have_major) = split /\./, $have;
+    my ($want_major) = split /\./, $want;
+    $_ = 5 for grep { $_ == 4 } $have_major, $want_major;
+    fail("$ext->{name} was written for core $want_major.x (requires_base $ext->{requires_base}), "
+        . "this core is $have - check it still builds and works, then raise its requires_base "
+        . "to '>=$have_major.0.0'")
+        if ($op eq '>=' || $op eq '>') && $have_major != $want_major;
 }
 
 sub discover {

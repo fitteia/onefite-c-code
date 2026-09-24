@@ -7,7 +7,7 @@ PERLCORE=/usr/lib/$(ARCH)-linux-gnu/perl/$(PERLVERSION)/CORE
 PREFIX=
 DESTDIR=$(ROOT)/$(PREFIX)
 LIBDIR=$(DESTDIR)/lib
-LIBNUMBER=4.0.4
+include ../../../libnumber.mk
 FLAGS= -D$(OS) -O3 -fPIC -I$(PERLCORE) -I..
 # macOS's own /usr/bin/gcc is Apple's clang wearing a gcc name, not GNU
 # GCC - same fix as ../makefile's own (see its comment for the full

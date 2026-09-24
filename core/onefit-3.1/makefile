@@ -46,7 +46,7 @@ CERNPACK=-lpacklib
 
 # to get the above CERNLIBPATH run: locate libmathlib.a
 
-LIBNUMBER=4.0.4
+include ../../libnumber.mk
 LIBNAME=libonefit-$(LIBNUMBER).a
 LIBUTILNAME=libonefit-util-$(LIBNUMBER).a
 
