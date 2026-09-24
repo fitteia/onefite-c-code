@@ -87,7 +87,7 @@ has none of that licensing exposure. That bundle's NAG-derived eigensolver
 has since been replaced with an independent, from-scratch implementation
 (Householder tridiagonalization + implicit QL, not derived from NAG's code)
 and is published separately under the Artistic License 2.0 at
-[onefite-external-extensions](https://github.com/fitteia/onefite-external-extensions);
+[onefite-ext-florence](https://github.com/fitteia/onefite-ext-florence);
 the original NAG-derived version remains available in a separate, private
 repository for anyone who already holds the appropriate NAG Library license.
 Minuit is a separate GPLv2 project, and the vendored `epstopdf` script
