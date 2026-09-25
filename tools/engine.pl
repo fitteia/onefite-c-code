@@ -151,7 +151,7 @@ sub migrate {
         unlink "$fl/$top";
         say_("removed $top from extensions/florence (a base-repo file left there by the old layout)");
     }
-    my $url = git_out($fl, 'remote', 'get-url', 'origin') // '';
+    my $url = git_out($fl, 'config', '--get', 'remote.origin.url') // '';
     if ($url =~ $OLD_FLORENCE_REPO) {
         git_ok($fl, 'remote', 'set-url', 'origin', $FLORENCE_URL);
         say_("extensions/florence: origin $url -> $FLORENCE_URL");
@@ -176,7 +176,7 @@ sub installed_extensions {
     for my $n (sort grep { !/^\./ && $_ ne 'template' } readdir $dh) {
         my $d = "$c/extensions/$n";
         next unless -f "$d/extension.json" && -d "$d/.git";
-        my $url = git_out($d, 'remote', 'get-url', 'origin') or next;
+        my $url = git_out($d, 'config', '--get', 'remote.origin.url') or next;
         push @found, [ $n, $url, 'main' ];
     }
     closedir $dh;
@@ -263,7 +263,7 @@ sub update_from_bundle {
 sub ext_record {
     my ($c, $name, $ref) = @_;
     my $d = "$c/extensions/$name";
-    return { name => $name, repo => git_out($d, 'remote', 'get-url', 'origin') // '',
+    return { name => $name, repo => git_out($d, 'config', '--get', 'remote.origin.url') // '',
              ref => $ref || 'main', commit => git_out($d, 'rev-parse', 'HEAD') // '?' };
 }
 
@@ -281,7 +281,7 @@ sub extensions_from_sources {
     for my $n (@names) {
         my $b = $bundled{$n};
         my $d = "$c/extensions/$n";
-        my $origin = -d "$d/.git" ? (git_out($d, 'remote', 'get-url', 'origin') // '') : '';
+        my $origin = -d "$d/.git" ? (git_out($d, 'config', '--get', 'remote.origin.url') // '') : '';
         if ($b && (!-d "$d/.git" || same_repo($origin, $b->{repo}))) {
             update_from_bundle($d, "$o->{sources}/$b->{bundle}", $b->{repo}, $b->{commit}, "extension $n");
         } elsif (-d "$d/.git") {
@@ -471,13 +471,13 @@ sub write_record {
         installed_at => strftime('%Y-%m-%dT%H:%M:%SZ', gmtime),
         libnumber    => $libnumber,
         core         => { commit => git_out($c, 'rev-parse', 'HEAD'),
-                          repo   => git_out($c, 'remote', 'get-url', 'origin') },
+                          repo   => git_out($c, 'config', '--get', 'remote.origin.url') },
         minuit       => { max_params => $minuit_limit },
         extensions   => [ map { { name => $_->{name}, repo => $_->{repo}, ref => $_->{ref}, commit => $_->{commit} } } @$exts ],
     );
     if ($o->{minuit_dir} && -d "$o->{minuit_dir}/.git") {
         $rec{minuit}{commit} = git_out($o->{minuit_dir}, 'rev-parse', 'HEAD');
-        $rec{minuit}{repo}   = git_out($o->{minuit_dir}, 'remote', 'get-url', 'origin');
+        $rec{minuit}{repo}   = git_out($o->{minuit_dir}, 'config', '--get', 'remote.origin.url');
     }
     spew("$root/etc/engine.json", $json->encode(\%rec));
 }
