@@ -77,7 +77,20 @@ perl tools/engine.pl install --c-root . --root <install-root> --minuit-dir <minu
   `florence-nag` keeps it. One that can't be fetched (offline, a private repository) keeps its
   current checkout. Only a fresh install gets the defaults.
 - **`--keep-minuit`** leaves an installed `lib/libminuit.a` alone and rebuilds only the core and
-  the extensions.
+  the extensions - as long as minuit's checkout is still at the commit `etc/engine.json`
+  recorded; a moved minuit is rebuilt anyway.
+- **`--sources DIR`** installs offline from a package's bundled sources (`DIR/sources.json` and
+  git bundles, as onefite-go's `.deb` ships in `/opt/onefite-go/share/engine-sources`): the
+  bundled extensions are updated from their bundles, only forward (a checkout that is already
+  newer is kept); any other installed extension (`florence-nag`, your own) is not fetched but
+  keeps its checkout and is rebuilt against the new core. Nothing comes from the network.
+- **`--if-changed`** rebuilds nothing when the core, minuit and every extension are still at the
+  commits `etc/engine.json` recorded - what a package upgrade that changed nothing in the
+  engine uses.
+- The `etc/engine.json` record (core version and commit, minuit's commit and parameter limit,
+  every extension with its repository and commit, when and where it was installed) is what
+  `onefite upgrade`/`fit --hybrid` read the minuit limit from and what onefite-gui's
+  Settings > Engine shows.
 - **The old extensions layout is repaired** (an extensions clone occupying `extensions/` itself,
   from before 2026): the clone becomes `extensions/florence`, this repo's own files there come
   back, and its old repository name is repointed to `onefite-ext-florence`.
