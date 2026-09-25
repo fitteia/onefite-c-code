@@ -9,6 +9,7 @@
 #        [--os LINUX|MacOSX] [--arch x86_64|aarch64] [--perlcore DIR] [--bindir DIR]
 #        [--extension NAME[=URL[@REF]]]... [--no-default-extensions]
 #        [--transport https|http|ssh] [--ref REF] [--no-fetch]
+#        [--sources DIR] [--if-changed]
 #   perl tools/engine.pl migrate  --c-root C          (only the layout repair)
 #   perl tools/engine.pl linktest --c-root C --root ROOT
 #   perl tools/engine.pl rollback --c-root C --root ROOT
@@ -34,6 +35,16 @@
 #     ROOT/.engine-previous (one step for `rollback`); on any failure puts
 #     the backed-up engine back exactly and exits 1 - the previous engine
 #     keeps working.
+#
+# --sources DIR (a package's bundled sources: DIR/sources.json and git
+# bundles): extensions come only from DIR, never from the network - a
+# bundled one is updated from its bundle (only forward: a checkout that is
+# already newer is kept), any other installed one (your own, florence-nag)
+# keeps its checkout and is rebuilt against the new core.
+# --if-changed: when the core, minuit and every extension are at the commits
+# ROOT/etc/engine.json recorded, nothing is rebuilt.
+# --keep-minuit keeps an installed lib/libminuit.a only while minuit's
+# checkout is still at the recorded commit.
 #
 # "Engine files" are only what this repo installs into ROOT: lib/*.a *.dat
 # *.h, include/, share/extensions/, etc/engine.mk, etc/extensions.mk,
@@ -216,6 +227,96 @@ sub fetch_extensions {
     return \@recs;
 }
 
+# ---- 3b. bundled sources (--sources) ---------------------------------
+
+sub sources_doc {
+    my ($dir) = @_;
+    my $doc = read_json("$dir/sources.json") or die "no readable $dir/sources.json\n";
+    return $doc;
+}
+
+# Brings a checkout to a bundle's commit: clones it when missing (origin
+# set to the real repository), otherwise moves it forward only - a
+# checkout that is already newer, or has diverged, is kept as it is.
+sub update_from_bundle {
+    my ($dir, $bundle, $repo, $commit, $what) = @_;
+    if (!-d "$dir/.git") {
+        make_path(dirname($dir));
+        run_ok('git', 'clone', '-q', $bundle, $dir) or die "cannot clone $bundle\n";
+        git_ok($dir, 'remote', 'set-url', 'origin', $repo) if $repo;
+        git_ok($dir, 'checkout', '-q', '--force', $commit) or die "no commit $commit in $bundle\n";
+        say_("$what at " . substr($commit, 0, 7) . ' (bundled)');
+        return;
+    }
+    git_ok($dir, 'fetch', '-q', $bundle, 'HEAD') or die "cannot fetch $bundle into $dir\n";
+    my $head = git_out($dir, 'rev-parse', 'HEAD') // '';
+    if ($head eq $commit) {
+        say_("$what already at " . substr($commit, 0, 7));
+    } elsif (git_ok($dir, 'merge-base', '--is-ancestor', $head, $commit)) {
+        git_ok($dir, 'checkout', '-q', '--force', $commit) or die "cannot check out $commit in $dir\n";
+        say_("$what: " . substr($head, 0, 7) . ' -> ' . substr($commit, 0, 7) . ' (bundled)');
+    } else {
+        say_("$what: keeping " . substr($head, 0, 7) . ' (newer than or diverged from the bundled ' . substr($commit, 0, 7) . ')');
+    }
+}
+
+sub ext_record {
+    my ($c, $name, $ref) = @_;
+    my $d = "$c/extensions/$name";
+    return { name => $name, repo => git_out($d, 'remote', 'get-url', 'origin') // '',
+             ref => $ref || 'main', commit => git_out($d, 'rev-parse', 'HEAD') // '?' };
+}
+
+# --sources: the extensions to install, from the bundles only.
+sub extensions_from_sources {
+    my ($c, $root, $o) = @_;
+    my $src = sources_doc($o->{sources});
+    my %bundled = %{ $src->{extensions} // {} };
+    my @installed = installed_extensions($c, $root);
+    my @names = @installed ? map { $_->[0] } @installed
+              : $o->{no_default_extensions} ? ()
+              : sort keys %bundled;
+    my %ref = map { $_->[0] => $_->[2] } @installed;
+    my @recs;
+    for my $n (@names) {
+        my $b = $bundled{$n};
+        my $d = "$c/extensions/$n";
+        my $origin = -d "$d/.git" ? (git_out($d, 'remote', 'get-url', 'origin') // '') : '';
+        if ($b && (!-d "$d/.git" || same_repo($origin, $b->{repo}))) {
+            update_from_bundle($d, "$o->{sources}/$b->{bundle}", $b->{repo}, $b->{commit}, "extension $n");
+        } elsif (-d "$d/.git") {
+            say_("extension $n: not in this package - keeping its checkout (rebuilt against the new core)");
+        } else {
+            die "extension $n is recorded as installed but has no checkout and is not in this package\n";
+        }
+        push @recs, ext_record($c, $n, $ref{$n});
+    }
+    return \@recs;
+}
+
+sub same_repo {
+    my ($a, $b) = map { my $u = lc($_ // ''); $u =~ s{\.git$}{}; $u =~ s{^git\@github\.com:}{https://github.com/}; $u } @_;
+    return $a eq $b;
+}
+
+# --if-changed: true when everything is at the recorded commits.
+sub unchanged {
+    my ($c, $root, $o, $exts) = @_;
+    my $rec = read_json("$root/etc/engine.json") or return 0;
+    return 0 unless -f "$root/etc/engine.mk" && -f "$root/lib/libminuit.a";
+    return 0 unless ($rec->{core}{commit} // '') eq (git_out($c, 'rev-parse', 'HEAD') // '-');
+    my ($ln) = (slurp("$c/libnumber.mk") // '') =~ /^LIBNUMBER\s*=\s*(\S+)/m;
+    return 0 unless ($rec->{libnumber} // '') eq ($ln // '-');
+    if ($o->{minuit_dir} && -d "$o->{minuit_dir}/.git") {
+        return 0 unless ($rec->{minuit}{commit} // '') eq (git_out($o->{minuit_dir}, 'rev-parse', 'HEAD') // '-');
+    }
+    return 0 if $o->{minuit_max_params} && $o->{minuit_max_params} != ($rec->{minuit}{max_params} // 0);
+    my %want = map { $_->{name} => $_->{commit} } @{ $rec->{extensions} // [] };
+    my %have = map { $_->{name} => $_->{commit} } @$exts;
+    return 0 unless join(',', map { "$_=$want{$_}" } sort keys %want) eq join(',', map { "$_=$have{$_}" } sort keys %have);
+    return 1;
+}
+
 # ---- 4/7. backup and restore -----------------------------------------
 
 sub engine_items {
@@ -347,6 +448,21 @@ sub linktest {
 
 # ---- 7. record ----------------------------------------------------------
 
+# Every extension actually installed - each checkout with an extension.json,
+# not just the ones this run fetched - with the ref it follows (this run's,
+# else the previous record's, else main).
+sub installed_records {
+    my ($c, $root, $exts) = @_;
+    my %ref = map { $_->[0] => $_->[2] } installed_extensions($c, $root);
+    $ref{ $_->{name} } = $_->{ref} for grep { $_->{ref} } @$exts;
+    my @recs;
+    for my $n (list_dir("$c/extensions")) {
+        next if $n eq 'template' || !-f "$c/extensions/$n/extension.json" || !-d "$c/extensions/$n/.git";
+        push @recs, ext_record($c, $n, $ref{$n});
+    }
+    return \@recs;
+}
+
 sub write_record {
     my ($c, $root, $o, $exts, $minuit_limit) = @_;
     my ($libnumber) = (slurp("$root/etc/engine.mk") // '') =~ /LIBNUMBER\s*:?=\s*(\S+)/;
@@ -364,6 +480,19 @@ sub write_record {
         $rec{minuit}{repo}   = git_out($o->{minuit_dir}, 'remote', 'get-url', 'origin');
     }
     spew("$root/etc/engine.json", $json->encode(\%rec));
+}
+
+# minuit's checkout is no longer at the commit the installed library was
+# built from (unknown counts as not moved).
+sub minuit_moved {
+    my ($root, $o) = @_;
+    return 0 unless $o->{minuit_dir} && -d "$o->{minuit_dir}/.git";
+    my $rec = read_json("$root/etc/engine.json") or return 0;
+    my $was = $rec->{minuit}{commit} or return 0;
+    my $now = git_out($o->{minuit_dir}, 'rev-parse', 'HEAD') // return 0;
+    return 0 if $was eq $now;
+    say_('minuit changed (' . substr($was, 0, 7) . ' -> ' . substr($now, 0, 7) . ') - rebuilding it despite --keep-minuit');
+    return 1;
 }
 
 sub minuit_limit {
@@ -392,6 +521,7 @@ sub opts {
         'os=s' => \$o{os}, 'arch=s' => \$o{arch}, 'perlcore=s' => \$o{perlcore}, 'bindir=s' => \$o{bindir},
         'extension=s@' => $o{extension}, 'no-default-extensions' => \$o{no_default_extensions},
         'transport=s' => \$o{transport}, 'ref=s' => \$o{ref}, 'no-fetch' => \$o{no_fetch},
+        'sources=s' => \$o{sources}, 'if-changed' => \$o{if_changed},
     ) or exit 2;
     fail('--c-root is required') unless $o{c_root};
     $o{c_root} = abs_path($o{c_root}) // fail("no such directory: $o{c_root}");
@@ -400,6 +530,7 @@ sub opts {
         $o{root} = abs_path($o{root});
     }
     $o{minuit_dir} = abs_path($o{minuit_dir}) if $o{minuit_dir} && -d $o{minuit_dir};
+    $o{sources} = abs_path($o{sources}) // fail("no such directory: $o{sources}") if $o{sources};
     $o{bindir} //= "$o{root}/bin" if $o{root};
     return \%o;
 }
@@ -421,13 +552,19 @@ sub cmd_install {
     my $lock = lock_root($root);
     migrate($c);
     my %had = map { $_ => 1 } list_dir("$c/extensions");
-    my $exts = $o->{no_fetch} ? [] : fetch_extensions($c, $root, $o);
+    my $exts = $o->{sources}  ? extensions_from_sources($c, $root, $o)
+             : $o->{no_fetch} ? []
+             :                  fetch_extensions($c, $root, $o);
+    if ($o->{if_changed} && unchanged($c, $root, $o, $exts)) {
+        say_("the engine in $root is up to date (core, minuit and extensions at the recorded commits) - nothing rebuilt");
+        return 0;
+    }
     my $fresh = !-f "$root/etc/engine.mk" && !-f "$root/lib/libminuit.a";
     my $prev = "$root/.engine-previous";
     backup($c, $root, "$prev.new");
     my $limit = minuit_limit($root, $o);
     my $ok = eval {
-        if ($o->{keep_minuit} && -f "$root/lib/libminuit.a" && !$o->{minuit_max_params}) {
+        if ($o->{keep_minuit} && -f "$root/lib/libminuit.a" && !$o->{minuit_max_params} && !minuit_moved($root, $o)) {
             say_("keeping the installed $root/lib/libminuit.a (--keep-minuit)");
         } else {
             build_minuit($o->{minuit_dir}, $root, $limit);
@@ -463,8 +600,7 @@ sub cmd_install {
         unlink "$root/lib/libonefit-external-models.a";
         say_('removed lib/libonefit-external-models.a (the old extensions library, no longer linked)');
     }
-    my @installed = grep { -f "$c/extensions/$_->{name}/extension.json" } @$exts;
-    write_record($c, $root, $o, \@installed, $limit);
+    write_record($c, $root, $o, installed_records($c, $root, $exts), $limit);
     remove_tree($prev);
     rename "$prev.new", $prev;
     say_("engine installed into $root (previous one kept in $prev for `engine.pl rollback`)");

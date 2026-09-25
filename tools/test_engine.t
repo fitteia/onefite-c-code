@@ -134,13 +134,12 @@ MK
         my $m = slurp("$d/extension.json");
         $m =~ s/"name": "example"/"name": "$name"/;
         spew("$d/extension.json", $m);
-        # its own function name, then a call to a function nothing defines -
-        # as if it relied on a core model that is not there
-        if ($extra) {
-            for my $f (qw(extension.json META-C-model.json example.c example.h)) {
-                (my $t = slurp("$d/$f")) =~ s/ExampleGain/${name}Gain/g;
-                spew("$d/$f", $t);
-            }
+        # its own function name (two extensions may not provide the same
+        # one); "broken" also calls a function nothing defines - as if it
+        # relied on a core model that is not there
+        for my $f (qw(extension.json META-C-model.json example.c example.h)) {
+            (my $t = slurp("$d/$f")) =~ s/ExampleGain/${name}Gain/g;
+            spew("$d/$f", $t);
         }
         spew("$d/example.c", slurp("$d/example.c")
             . "double core_model_that_is_gone(double);\ndouble uses_it(double x) { return core_model_that_is_gone(x); }\n")
@@ -173,6 +172,65 @@ MK
     ok(!-e "$c/extensions/broken", "...removing the checkout it had cloned");
     ok(-e "$c/extensions/good", '...but not one that was there before');
     is((run('install', @common))[0], 0, 'the next plain install works again');
+
+    # ---- --sources (a package's bundled sources) and --if-changed ------
+    my $pkgsrc = sub {
+        my ($name, $d) = @_;
+        my $src = "$w/sources";
+        make_path($src);
+        sh("git -C $d bundle create -q $src/$name.bundle HEAD 2>/dev/null || git -C $d bundle create $src/$name.bundle HEAD >/dev/null 2>&1");
+        my $commit = gitq($d, 'rev-parse', 'HEAD');
+        spew("$src/sources.json", qq({"extensions": {"$name": {"repo": "https://example.org/$name.git", "commit": "$commit", "bundle": "$name.bundle"}}}\n));
+        return ($src, $commit);
+    };
+    my $pkg = $mkext->('pkg');
+    my ($src, $c1) = $pkgsrc->('pkg', $pkg);
+    my $root2 = "$w/root2";
+    make_path("$root2/lib", "$root2/etc/OFE/default");
+    sh('cp', "$root/lib/libminuit.a", "$root2/lib/");
+    sh('cp', "$root/etc/OFE/default/makefile", "$root2/etc/OFE/default/");
+    my $c2 = "$w/c-code2";
+    sh('git', 'clone', '-q', $C_ROOT, $c2);
+    sh('cp', "$DRIVER", "$c2/tools/engine.pl");
+    my @pkgrun = ('--c-root', $c2, '--root', $root2, '--keep-minuit', '--sources', $src);
+    ($rc, $out) = run('install', @pkgrun, '--if-changed');
+    is($rc, 0, '--sources: a fresh install from the bundles') or diag $out;
+    like($out, qr/extension pkg at \w{7} \(bundled\)/, '...the bundled extension, from its bundle');
+    is(gitq("$c2/extensions/pkg", 'remote', 'get-url', 'origin'), 'https://example.org/pkg.git', '...with origin set to the real repository');
+    like(slurp("$root2/etc/engine.json"), qr{"repo" : "https://example.org/pkg.git"}, '...and recorded as such');
+
+    my $mtime = (stat "$root2/lib/libonefit-ext-pkg.a")[9];
+    ($rc, $out) = run('install', @pkgrun, '--if-changed');
+    is($rc, 0, '--if-changed with nothing changed');
+    like($out, qr/up to date .* nothing rebuilt/, '...rebuilds nothing');
+    is((stat "$root2/lib/libonefit-ext-pkg.a")[9], $mtime, '...indeed');
+
+    spew("$pkg/NOTE", "v2\n");
+    git($pkg, 'add', 'NOTE');
+    git($pkg, 'commit', '-qm', 'v2');
+    my (undef, $c2new) = $pkgsrc->('pkg', $pkg);
+    ($rc, $out) = run('install', @pkgrun, '--if-changed');
+    is($rc, 0, 'a newer bundle') or diag $out;
+    like($out, qr/extension pkg: \w{7} -> \w{7} \(bundled\)/, '...moves the checkout forward');
+    is(gitq("$c2/extensions/pkg", 'rev-parse', 'HEAD'), $c2new, '...to the bundled commit');
+    like($out, qr/link test passed/, '...and rebuilds');
+
+    my $pkgold = "$w/pkg-old";
+    sh('git', 'clone', '-q', $pkg, $pkgold);
+    git($pkgold, 'reset', '-q', '--hard', 'HEAD~1');
+    $pkgsrc->('pkg', $pkgold);
+    ($rc, $out) = run('install', @pkgrun);
+    is($rc, 0, 'an older bundle');
+    like($out, qr/extension pkg: keeping \w{7} \(newer than or diverged/, '...never moves a checkout backwards');
+    is(gitq("$c2/extensions/pkg", 'rev-parse', 'HEAD'), $c2new, '...indeed');
+
+    ($rc, $out) = run('install', '--c-root', $c2, '--root', $root2, '--keep-minuit', '--no-default-extensions', '--extension', "good=$good\@main");
+    is($rc, 0, 'install an extension that is not in the package') or diag $out;
+    ($rc, $out) = run('install', @pkgrun, '--if-changed');
+    is($rc, 0, '--sources again') or diag $out;
+    like($out, qr/extension good: not in this package - keeping its checkout/, '...keeps it, offline');
+    like(slurp("$root2/etc/engine.json"), qr/"name" : "good"/, '...still recorded');
+    like(slurp("$root2/etc/engine.json"), qr/"name" : "pkg"/, 'the record lists every installed extension, not only the ones a run named');
 }
 
 done_testing();
