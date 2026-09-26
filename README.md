@@ -66,6 +66,15 @@ only fetch minuit and this repo and then call it, so both install the same way:
 perl tools/engine.pl install --c-root . --root <install-root> --minuit-dir <minuit-checkout>
 ```
 
+`perl tools/engine.pl help` lists every command and option. Besides those
+below: `--minuit-max-params N` (MINUIT's limit; default the recorded one,
+else 1000), `--os`/`--arch` (default: this machine's), `--bindir` (the small
+utilities; default `<install-root>/bin`), `--perlcore` (only for the optional
+SWIG module), `--extension NAME[=URL[@REF]]` (repeatable),
+`--no-default-extensions`, `--ref REF` and `--transport https|http|ssh` for
+the extensions, and `--no-fetch` (fetch no extensions, build the checked-out
+ones). Besides `install`: `rollback`, `linktest` and `migrate`.
+
 - **Nothing breaks the installed engine.** The installed engine files (libraries, headers,
   `etc/engine.mk`, `etc/extensions.mk`, the model catalog) are backed up first. The new engine
   must build, and a link test must pass: every object of every extension linked with the per-fit

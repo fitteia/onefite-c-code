@@ -623,10 +623,58 @@ sub cmd_rollback {
 sub cmd_migrate  { my $o = opts(@_); migrate($o->{c_root}); return 0 }
 sub cmd_linktest { my $o = opts(@_); fail('--root is required') unless $o->{root}; return linktest($o->{c_root}, $o->{root}) ? 0 : 1 }
 
+my $USAGE = <<"END";
+usage: $0 COMMAND --c-root DIR [options]
+
+commands:
+  install    build and install minuit, the core and the extensions into
+             --root, safely: back up, build, link-test every extension,
+             put the previous engine back on any failure, record
+             ROOT/etc/engine.json
+  rollback   put back the engine as it was before the last install
+  linktest   only the link test of the installed engine (exit 1 if it fails)
+  migrate    only repair the pre-2026 extensions layout
+  help       this text
+
+options:
+  --c-root DIR             this onefite-c-code checkout (required)
+  --root DIR               the install root (required except for migrate)
+  --minuit-dir DIR         the minuit checkout to build (needed unless
+                           ROOT/lib/libminuit.a is kept)
+  --minuit-max-params N    MINUIT's parameter limit to build with
+                           (default: the recorded one, else 1000)
+  --keep-minuit            keep an installed lib/libminuit.a while minuit's
+                           checkout is at the recorded commit
+  --os LINUX|MacOSX        target OS (default: this one's)
+  --arch x86_64|aarch64    target architecture (default: this one's)
+  --perlcore DIR           Perl's CORE directory, only for the optional SWIG
+                           module (default: none)
+  --bindir DIR             where the small utilities go (default: ROOT/bin)
+  --extension NAME[=URL[\@REF]]
+                           install this extension (repeatable): a registry
+                           name, or your own repository
+  --no-default-extensions  not the registry's default extensions
+  --ref REF                default git ref for extensions (default: main)
+  --transport https|http|ssh
+                           how to reach registry repositories (default: https)
+  --no-fetch               fetch no extensions; build the checked-out ones
+  --sources DIR            offline: take the bundled extensions from a
+                           package's DIR/sources.json and git bundles
+                           (only forward); keep other installed ones
+  --if-changed             rebuild nothing when the core, minuit and every
+                           extension are at the commits etc/engine.json
+                           recorded
+
+With no extension options an install updates the extensions recorded in
+ROOT/etc/engine.json rather than the registry defaults. See README.md,
+"Installing the engine safely".
+END
+
 my %cmds = (install => \&cmd_install, migrate => \&cmd_migrate, linktest => \&cmd_linktest, rollback => \&cmd_rollback);
 my $cmd = shift // '';
+if ($cmd =~ /^(help|-h|--help)$/) { print $USAGE; exit 0 }
 my $run = $cmds{$cmd} or do {
-    print STDERR "usage: $0 install|migrate|linktest|rollback --c-root DIR [--root DIR] ...\n";
+    print STDERR $USAGE;
     exit 2;
 };
 my $rc = eval { $run->(@ARGV) };
