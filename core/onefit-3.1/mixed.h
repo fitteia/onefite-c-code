@@ -88,8 +88,26 @@ static int run_fit_spawn(int k)
         NULL
     };
 
-    int ret = posix_spawn(&pid, PROGNAME, &actions, NULL, argv, environ);
+    /* The child's environment: ours plus ONEFITE_NO_RESIDUES=1, so this
+       one-block run doesn't write fit-residues-1.res into the shared folder
+       (it overwrote block 1's residues; see gfit_outpg). Only its fit%d.out
+       is read back. */
+    int n_env = 0;
+    while (environ[n_env] != NULL) n_env++;
+    char **envp = malloc((n_env + 2) * sizeof(char *));
+    if (envp == NULL) {
+        posix_spawn_file_actions_destroy(&actions);
+        close(fd_in);
+        close(fd_out);
+        return -1;
+    }
+    for (int e = 0; e < n_env; e++) envp[e] = environ[e];
+    envp[n_env] = "ONEFITE_NO_RESIDUES=1";
+    envp[n_env + 1] = NULL;
 
+    int ret = posix_spawn(&pid, PROGNAME, &actions, NULL, argv, envp);
+
+    free(envp);
     posix_spawn_file_actions_destroy(&actions);
 
     close(fd_in);

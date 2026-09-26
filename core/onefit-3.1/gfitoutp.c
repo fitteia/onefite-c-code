@@ -82,6 +82,16 @@ void gfit_outpg(double par[])
   
   mode = 0;
 
+  /* A MIXED fit's per-block child (mixed.h's run_fit_spawn) is a one-block
+     run in the parent's folder: its fit-residues-1.res would overwrite block
+     1's, last child to finish winning. It sets ONEFITE_NO_RESIDUES, and only
+     its fit%d.out (above) is wanted from it. */
+  if(getenv("ONEFITE_NO_RESIDUES") != NULL) {
+    free_dvector(fs,1,Ma);
+    free_dvector(chisq,1,NT);
+    fclose(fitout);
+    return;
+  }
   
   for(i=1;i<=NT;i++) {
     Data = VData[i-1];
